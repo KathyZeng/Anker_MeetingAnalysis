@@ -34,3 +34,11 @@ Thumbs.db
 *_backup/
 backup/
 archive/
+
+# 测试文件
+**/test_*.html
+**/test_*.py
+
+# 临时生成的HTML文件
+output/interactive_dashboard.html
+output/temp_*.html
