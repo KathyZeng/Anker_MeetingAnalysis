@@ -1199,9 +1199,9 @@ tr:hover {
                 html += `
                 <div class="kpi-card ${status === '达标' ? 'status-good' : 'status-bad'}" onclick="showTab('analysis', event)">
                     <div class="kpi-title">${name}</div>
-                    <div class="kpi-value">${Math.abs(changeRate).toFixed(2)}${name.includes('占比') ? '个百分点' : '%'}</div>
+                    <div class="kpi-value">${Math.abs(changeRate).toFixed(2)}%</div>
                     <div class="kpi-change ${changeClass}">
-                        ${changeIcon} ${changeRate > 0 ? '改善' : '恶化'} ${Math.abs(changeRate).toFixed(2)}${name.includes('占比') ? '个百分点' : '%'}
+                        ${changeIcon} ${changeRate > 0 ? '改善' : '恶化'} ${Math.abs(changeRate).toFixed(2)}%
                     </div>
                     <div class="kpi-status ${status === '达标' ? 'status-good' : 'status-bad'}">${status}</div>
                 </div>
