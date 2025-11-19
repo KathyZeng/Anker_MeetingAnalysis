@@ -1,0 +1,2206 @@
+#!/usr/bin/env python3
+"""
+交互式仪表盘生成器
+生成包含原始数据和分析结果的双层可视化页面
+"""
+
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from typing import Dict, List
+from pathlib import Path
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """自定义JSON编码器,处理numpy类型"""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif pd.isna(obj):
+            return None
+        return super().default(obj)
+
+
+class InteractiveDashboardGenerator:
+    """交互式仪表盘生成器"""
+
+    def __init__(self, data_loader, calculator, analyzer):
+        """
+        初始化生成器
+
+        Args:
+            data_loader: 数据加载器实例
+            calculator: 指标计算器实例
+            analyzer: 分析器实例
+        """
+        self.data_loader = data_loader
+        self.calculator = calculator
+        self.analyzer = analyzer
+
+    def prepare_data(self) -> Dict:
+        """准备所有需要的数据"""
+        print("\n准备数据...")
+
+        # 获取基础数据
+        baseline = self.data_loader.get_baseline_data()
+        current = self.data_loader.get_recent_weeks_data(4)
+        weekly_data = self.data_loader.get_data_by_period_type('weekly')
+        all_data = self.data_loader.all_data
+
+        # 计算KPI
+        calculator = self.calculator.__class__(baseline, current)
+        all_kpis = calculator.calculate_all_kpis(weekly_data)
+
+        # 周期对比
+        periods = {}
+        for period in self.data_loader.get_period_list():
+            period_name = period['period_name']
+            periods[period_name] = self.data_loader.get_data_by_period(period_name)
+        period_comparison = calculator.calculate_period_comparison(periods)
+
+        # Top 10 用户
+        top10_users = self._get_top10_users_detail(baseline, current, all_data)
+
+        # 异常检测 - 使用全部历史数据以获得更可靠的统计基线
+        anomalies = self._detect_anomalies(all_data)
+
+        # 人员分层 - 使用当前期数据
+        user_tiers = self._classify_users(current)
+
+        return {
+            'kpis': all_kpis,
+            'raw_data': all_data.to_dict('records'),
+            'period_comparison': period_comparison.to_dict('records'),
+            'top10_users': top10_users,
+            'anomalies': anomalies,
+            'user_tiers': user_tiers,
+            'baseline_stats': self._get_stats(baseline),
+            'current_stats': self._get_stats(current),
+            'metadata': {
+                'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'baseline_period': '9月-10月',
+                'current_period': '最近4周',
+                'total_records': len(all_data)
+            }
+        }
+
+    def _get_top10_users_detail(self, baseline: pd.DataFrame, current: pd.DataFrame,
+                                  all_data: pd.DataFrame) -> List[Dict]:
+        """获取Top10用户详细信息 - 按当前期会议数排序,去重"""
+        if '日人均线上会议数' not in current.columns or 'user_name' not in current.columns:
+            return []
+
+        # 按当前期会议数聚合并去重(每个user只保留平均值)
+        current_agg = current.groupby('user_name').agg({
+            '日人均线上会议数': 'mean',
+            '日人均线上会议时长(分钟)': 'mean'
+        }).reset_index()
+
+        # 获取当前期Top10(按会议数排序)
+        top10_users = current_agg.nlargest(10, '日人均线上会议数')
+
+        results = []
+        for idx, row in top10_users.iterrows():
+            user_name = row['user_name']
+            current_avg = row['日人均线上会议数']
+            current_duration = row['日人均线上会议时长(分钟)']
+
+            # 获取基线期数据(聚合)
+            baseline_user = baseline[baseline['user_name'] == user_name]
+            baseline_avg = baseline_user['日人均线上会议数'].mean() if not baseline_user.empty else 0
+            baseline_duration = baseline_user['日人均线上会议时长(分钟)'].mean() if not baseline_user.empty else 0
+
+            # 获取该用户的全部历史数据
+            user_history = all_data[all_data['user_name'] == user_name].to_dict('records')
+
+            # 计算变化
+            change_rate = ((current_avg - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
+
+            results.append({
+                'rank': len(results) + 1,
+                'user_name': user_name,
+                'baseline_meetings': round(baseline_avg, 2),
+                'current_meetings': round(current_avg, 2),
+                'change_rate': round(change_rate, 2),
+                'baseline_duration': round(baseline_duration, 2),
+                'current_duration': round(current_duration, 2),
+                'history': user_history,
+                'status': '改善' if change_rate < 0 else '增加'
+            })
+
+        return results
+
+    def _detect_anomalies(self, data: pd.DataFrame) -> List[Dict]:
+        """检测异常用户 - 基于用户平均值"""
+        if data.empty or '日人均线上会议数' not in data.columns:
+            return []
+
+        # 先按用户聚合,计算每个用户的平均会议数
+        user_avg = data.groupby('user_name').agg({
+            '日人均线上会议数': 'mean',
+            '日人均线上会议时长(分钟)': 'mean'
+        }).reset_index()
+
+        anomalies = []
+
+        # 计算整体均值和标准差
+        mean_meetings = user_avg['日人均线上会议数'].mean()
+        std_meetings = user_avg['日人均线上会议数'].std()
+
+        # 检测异常用户
+        for idx, row in user_avg.iterrows():
+            meetings = row['日人均线上会议数']
+            z_score = (meetings - mean_meetings) / std_meetings if std_meetings > 0 else 0
+
+            if abs(z_score) > 1.5:  # Z-score > 1.5 表示异常(约覆盖86.6%置信区间)
+                anomalies.append({
+                    'user_name': row['user_name'],
+                    'metric': '日均会议数',
+                    'value': round(meetings, 2),
+                    'mean': round(mean_meetings, 2),
+                    'z_score': round(z_score, 2),
+                    'type': '高于平均' if z_score > 0 else '低于平均',
+                    'duration': round(row['日人均线上会议时长(分钟)'], 2)
+                })
+
+        return sorted(anomalies, key=lambda x: abs(x['z_score']), reverse=True)
+
+    def _classify_users(self, data: pd.DataFrame) -> Dict:
+        """用户分层统计 - 基于用户平均值"""
+        if data.empty or '日人均线上会议数' not in data.columns:
+            return {'high': [], 'medium': [], 'low': []}
+
+        # 先按用户聚合,计算每个用户的平均会议数
+        user_avg = data.groupby('user_name').agg({
+            '日人均线上会议数': 'mean',
+            '日人均线上会议时长(分钟)': 'mean'
+        }).reset_index()
+
+        high_freq = []
+        medium_freq = []
+        low_freq = []
+
+        for idx, row in user_avg.iterrows():
+            meetings = row['日人均线上会议数']
+            user_info = {
+                'user_name': row['user_name'],
+                'meetings': round(meetings, 2),
+                'duration': round(row.get('日人均线上会议时长(分钟)', 0), 2)
+            }
+
+            if meetings >= 5:
+                high_freq.append(user_info)
+            elif meetings >= 2:
+                medium_freq.append(user_info)
+            else:
+                low_freq.append(user_info)
+
+        return {
+            'high': sorted(high_freq, key=lambda x: x['meetings'], reverse=True),
+            'medium': sorted(medium_freq, key=lambda x: x['meetings'], reverse=True),
+            'low': sorted(low_freq, key=lambda x: x['meetings'], reverse=True)
+        }
+
+    def _get_stats(self, data: pd.DataFrame) -> Dict:
+        """计算描述性统计"""
+        if data.empty or '日人均线上会议数' not in data.columns:
+            return {}
+
+        meetings = data['日人均线上会议数']
+        duration = data.get('日人均线上会议时长(分钟)', pd.Series([0]))
+
+        # 会议类型统计 - 计算平均值 (注意：CSV中的列名是"即时会议"和"日程会议"，不带"数"字)
+        即时会议 = data.get('即时会议', data.get('即时会议数', pd.Series([0]))).mean()
+        日程会议 = data.get('日程会议', data.get('日程会议数', pd.Series([0]))).mean()
+        通话1v1 = data.get('1v1通话数', pd.Series([0])).mean()
+
+        return {
+            # 扁平结构用于JavaScript图表
+            'mean': round(meetings.mean(), 2),
+            'std': round(meetings.std(), 2),
+            'median': round(meetings.median(), 2),
+            'min': round(meetings.min(), 2),
+            'max': round(meetings.max(), 2),
+            'cv': round(meetings.std() / meetings.mean(), 2) if meetings.mean() > 0 else 0,
+            # 会议类型统计
+            '即时会议数': round(即时会议, 2),
+            '日程会议数': round(日程会议, 2),
+            '1v1通话数': round(通话1v1, 2),
+            # 详细统计(保留原有结构)
+            '日人均会议数': {
+                '均值': round(meetings.mean(), 2),
+                '标准差': round(meetings.std(), 2),
+                '中位数': round(meetings.median(), 2),
+                '最小值': round(meetings.min(), 2),
+                '最大值': round(meetings.max(), 2),
+                '变异系数': round(meetings.std() / meetings.mean(), 2) if meetings.mean() > 0 else 0
+            },
+            '日人均会议时长': {
+                '均值': round(duration.mean(), 2),
+                '标准差': round(duration.std(), 2),
+                '中位数': round(duration.median(), 2),
+                '最小值': round(duration.min(), 2),
+                '最大值': round(duration.max(), 2),
+                '变异系数': round(duration.std() / duration.mean(), 2) if duration.mean() > 0 else 0
+            }
+        }
+
+    def generate_html(self, output_path: str = 'output/interactive_dashboard.html'):
+        """生成完整的交互式HTML仪表盘"""
+        print("\n🎨 生成交互式仪表盘...")
+
+        # 准备数据
+        data = self.prepare_data()
+
+        # 生成HTML
+        html_content = self._generate_html_template(data)
+
+        # 保存文件
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ 交互式仪表盘已生成: {output_file}")
+
+        return output_file
+
+    def _generate_html_template(self, data: Dict) -> str:
+        """生成HTML模板"""
+        # 将数据转换为JSON字符串,使用自定义编码器处理numpy类型
+        data_json = json.dumps(data, ensure_ascii=False, indent=2, cls=NumpyEncoder)
+
+        html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会议改善效果评估 - 交互式仪表盘</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+                         'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+        }}
+
+        .header {{
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }}
+
+        .header h1 {{
+            font-size: 32px;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }}
+
+        .header .subtitle {{
+            color: #718096;
+            font-size: 16px;
+        }}
+
+        .nav-tabs {{
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+
+        .nav-tab {{
+            flex: 1;
+            padding: 15px 20px;
+            background: #f7fafc;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            color: #4a5568;
+            transition: all 0.3s ease;
+        }}
+
+        .nav-tab:hover {{
+            background: #edf2f7;
+            transform: translateY(-2px);
+        }}
+
+        .nav-tab.active {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }}
+
+        .tab-content {{
+            display: none;
+        }}
+
+        .tab-content.active {{
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }}
+
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
+        .kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+
+        .kpi-card {{
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }}
+
+        .kpi-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }}
+
+        .kpi-card.达标 {{
+            border-left: 5px solid #48bb78;
+        }}
+
+        .kpi-card.未达标 {{
+            border-left: 5px solid #f56565;
+        }}
+
+        .kpi-card.需关注 {{
+            border-left: 5px solid #ed8936;
+        }}
+
+        .kpi-title {{
+            font-size: 14px;
+            color: #718096;
+            margin-bottom: 15px;
+        }}
+
+        .kpi-value {{
+            font-size: 36px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }}
+
+        .kpi-change {{
+            font-size: 18px;
+            font-weight: 600;
+        }}
+
+        .kpi-change.positive {{
+            color: #48bb78;
+        }}
+
+        .kpi-change.negative {{
+            color: #f56565;
+        }}
+
+        .kpi-status {{
+            margin-top: 10px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+        }}
+
+        .kpi-status.达标 {{
+            background: #c6f6d5;
+            color: #22543d;
+        }}
+
+        .kpi-status.未达标 {{
+            background: #fed7d7;
+            color: #742a2a;
+        }}
+
+        .kpi-status.需关注 {{
+            background: #feebc8;
+            color: #7c2d12;
+        }}
+
+        .kpi-comparison {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }}
+
+        .kpi-period {{
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }}
+
+        .period-label {{
+            font-size: 12px;
+            color: #718096;
+            font-weight: 500;
+        }}
+
+        .period-value {{
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d3748;
+        }}
+
+        .kpi-arrow {{
+            font-size: 24px;
+            color: #cbd5e0;
+            font-weight: bold;
+        }}
+
+        .chart-container {{
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }}
+
+        .chart-title {{
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+        }}
+
+        .chart {{
+            height: 400px;
+        }}
+
+        .data-table-container {{
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+
+        th {{
+            background: #f7fafc;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: background 0.2s ease;
+        }}
+
+        th:hover {{
+            background: #edf2f7;
+        }}
+
+        th .sort-icon {{
+            margin-left: 5px;
+            font-size: 12px;
+            color: #cbd5e0;
+        }}
+
+        th.sorted-asc .sort-icon::after {{
+            content: '▲';
+            color: #667eea;
+        }}
+
+        th.sorted-desc .sort-icon::after {{
+            content: '▼';
+            color: #667eea;
+        }}
+
+        td {{
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #2d3748;
+        }}
+
+        tr:hover {{
+            background: #f7fafc;
+        }}
+
+        .btn {{
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }}
+
+        .btn-primary {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }}
+
+        .btn-primary:hover {{
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }}
+
+        .btn-secondary {{
+            background: #edf2f7;
+            color: #4a5568;
+        }}
+
+        .btn-secondary:hover {{
+            background: #e2e8f0;
+        }}
+
+        .user-card {{
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }}
+
+        .user-card:hover {{
+            transform: translateX(5px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }}
+
+        .user-card-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }}
+
+        .user-rank {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }}
+
+        .user-name {{
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }}
+
+        .user-stats {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }}
+
+        .stat-item {{
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 6px;
+        }}
+
+        .stat-label {{
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 5px;
+        }}
+
+        .stat-value {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+        }}
+
+        /* 可折叠卡片样式 */
+        .collapsible-card {{
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }}
+
+        .collapsible-card:hover {{
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }}
+
+        .card-header {{
+            padding: 20px 25px;
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: all 0.3s ease;
+        }}
+
+        .card-header:hover {{
+            background: linear-gradient(135deg, #edf2f7 0%, #e2e8f0 100%);
+        }}
+
+        .card-header h3 {{
+            margin: 0;
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+
+        .toggle-icon {{
+            font-size: 20px;
+            color: #667eea;
+            transition: transform 0.3s ease;
+            font-weight: bold;
+        }}
+
+        .card-header.collapsed .toggle-icon {{
+            transform: rotate(-90deg);
+        }}
+
+        .card-body {{
+            padding: 25px;
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }}
+
+        .card-body.collapsed {{
+            max-height: 0;
+            padding: 0 25px;
+        }}
+
+        .modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }}
+
+        .modal.active {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+
+        .modal-content {{
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            animation: slideUp 0.3s ease;
+        }}
+
+        @keyframes slideUp {{
+            from {{ transform: translateY(50px); opacity: 0; }}
+            to {{ transform: translateY(0); opacity: 1; }}
+        }}
+
+        .modal-close {{
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #f7fafc;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: #4a5568;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+
+        .modal-close:hover {{
+            background: #e2e8f0;
+        }}
+
+        .filter-bar {{
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+
+        .filter-item {{
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }}
+
+        .filter-label {{
+            font-size: 12px;
+            font-weight: 600;
+            color: #718096;
+        }}
+
+        select, input {{
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+        }}
+
+        .search-box {{
+            flex: 1;
+            min-width: 200px;
+        }}
+
+        @media (max-width: 768px) {{
+            .kpi-grid {{
+                grid-template-columns: 1fr;
+            }}
+
+            .nav-tabs {{
+                flex-direction: column;
+            }}
+
+            .filter-bar {{
+                flex-direction: column;
+            }}
+
+            .filter-item {{
+                width: 100%;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎯 会议改善效果评估仪表盘</h1>
+            <p class="subtitle">Meeting Improvement Analysis Dashboard</p>
+            <p class="subtitle">数据周期: {data['metadata']['baseline_period']} (基线) → {data['metadata']['current_period']} (当前)</p>
+            <p class="subtitle">最后更新: {data['metadata']['generated_at']}</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('overview')">
+                🏠 概览
+            </button>
+            <button class="nav-tab" onclick="switchTab('raw-data')">
+                📊 原始数据
+            </button>
+            <button class="nav-tab" onclick="switchTab('analysis')">
+                📈 分析结果
+            </button>
+            <button class="nav-tab" onclick="switchTab('personnel')">
+                👥 人员详情
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="overview-tab" class="tab-content active">
+            <!-- 关键指标卡片 -->
+            <div class="kpi-grid" id="kpi-cards"></div>
+
+            <!-- 趋势分析卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3>📈 趋势分析</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div id="trend-chart" class="chart"></div>
+                </div>
+            </div>
+
+            <!-- 会议类型分布卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>📉 会议类型分布</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <div id="type-chart" class="chart"></div>
+                    <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #667eea;">
+                        <p style="color: #4a5568; font-size: 14px; line-height: 1.6; margin: 0;">
+                            <strong>📌 说明:</strong><br>
+                            • <strong>基线期</strong>: 9月 + 10月 的数据平均<br>
+                            • <strong>当前期</strong>: 最近4周 (10.20-11.16) 的数据平均
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="raw-data-tab" class="tab-content">
+            <!-- 筛选器卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>🔍 筛选器</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <div class="filter-bar">
+                        <div class="filter-item">
+                            <label class="filter-label">时间段</label>
+                            <select id="period-filter" onchange="filterRawData()">
+                                <option value="all">全部</option>
+                            </select>
+                        </div>
+                        <div class="filter-item search-box">
+                            <label class="filter-label">搜索人员</label>
+                            <input type="text" id="search-user" placeholder="输入姓名搜索..." onkeypress="handleSearchKeypress(event)">
+                        </div>
+                        <button class="btn btn-primary" onclick="filterRawData()" style="margin-right: 10px;">查询</button>
+                        <button class="btn btn-secondary" onclick="resetFilter()">重置</button>
+                        <button class="btn btn-primary" onclick="exportData()">导出数据</button>
+                        <span id="search-result-info" style="margin-left: 20px; color: #667eea; font-weight: 500;"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据表格卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3>📋 数据表格</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="data-table-container" style="padding: 0;">
+                        <table id="raw-data-table">
+                            <thead>
+                                <tr>
+                                    <th>序号</th>
+                                    <th data-sort="user_name">姓名<span class="sort-icon"></span></th>
+                                    <th data-sort="period_name">周期<span class="sort-icon"></span></th>
+                                    <th data-sort="人的会议数">总会议数<span class="sort-icon"></span></th>
+                                    <th data-sort="即时会议数">即时会议<span class="sort-icon"></span></th>
+                                    <th data-sort="日程会议">日程会议<span class="sort-icon"></span></th>
+                                    <th data-sort="1v1通话数">1v1通话<span class="sort-icon"></span></th>
+                                    <th data-sort="日人均线上会议数">日均会议数<span class="sort-icon"></span></th>
+                                    <th data-sort="日人均线上会议时长(分钟)">日均时长(分钟)<span class="sort-icon"></span></th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="raw-data-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="analysis-tab" class="tab-content">
+            <!-- 一级指标详解卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3>🎯 一级指标详解</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body" id="primary-kpis">
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                        <h4 style="color: #667eea; margin-bottom: 10px;">指标1: 日人均会议数减少率</h4>
+                        <div style="color: #4a5568; line-height: 1.8;">
+                            <p><strong>定义:</strong> 衡量每人每天参加会议数量的变化</p>
+                            <p><strong>数据来源:</strong> 使用原始数据字段 <code style="background: #f7fafc; padding: 2px 6px; border-radius: 3px;">日人均线上会议数</code></p>
+                            <p><strong>计算公式:</strong> (基线期均值 - 当前期均值) / 基线期均值 × 100%</p>
+                            <div id="kpi1-result" style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-top: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                        <h4 style="color: #667eea; margin-bottom: 10px;">指标2: 日人均会议时长减少率</h4>
+                        <div style="color: #4a5568; line-height: 1.8;">
+                            <p><strong>定义:</strong> 衡量每人每天在会议上花费时间的变化</p>
+                            <p><strong>数据来源:</strong> 使用原始数据字段 <code style="background: #f7fafc; padding: 2px 6px; border-radius: 3px;">日人均线上会议时长(分钟)</code></p>
+                            <p><strong>计算公式:</strong> (基线期均值 - 当前期均值) / 基线期均值 × 100%</p>
+                            <div id="kpi2-result" style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-top: 10px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                        <h4 style="color: #667eea; margin-bottom: 10px;">指标3: 即时会议占比下降</h4>
+                        <div style="color: #4a5568; line-height: 1.8;">
+                            <p><strong>定义:</strong> 衡量计划性会议vs临时会议的比例变化</p>
+                            <p><strong>数据来源:</strong> 使用原始数据字段 <code style="background: #f7fafc; padding: 2px 6px; border-radius: 3px;">即时会议数</code> 和 <code style="background: #f7fafc; padding: 2px 6px; border-radius: 3px;">人的会议数</code></p>
+                            <p><strong>计算公式:</strong> 即时会议占比 = 即时会议数 / 人的会议数 × 100%</p>
+                            <div id="kpi3-result" style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-top: 10px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 二级指标详解卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3>📈 二级指标详解</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div style="background: white; padding: 15px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #48bb78;">
+                        <h4 style="color: #48bb78; margin-bottom: 8px;">指标4: 1v1通话占比</h4>
+                        <p style="color: #4a5568; line-height: 1.6;">
+                            <strong>计算:</strong> 1v1通话数 / 人的会议数 × 100%<br>
+                            <strong>目标:</strong> 减少5-10个百分点<br>
+                            <strong>说明:</strong> 鼓励多人协作会议,提高沟通效率
+                        </p>
+                        <div id="kpi4-result" style="background: #f7fafc; padding: 10px; border-radius: 4px; margin-top: 8px;"></div>
+                    </div>
+
+                    <div style="background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #48bb78;">
+                        <h4 style="color: #48bb78; margin-bottom: 8px;">指标5: 团队负担均衡度</h4>
+                        <p style="color: #4a5568; line-height: 1.6;">
+                            <strong>计算:</strong> 变异系数(CV) = 标准差 / 均值<br>
+                            <strong>目标:</strong> 变异系数下降≥10%
+                        </p>
+                        <div id="kpi5-result" style="background: #f7fafc; padding: 10px; border-radius: 4px; margin-top: 8px;"></div>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 15px; background: #fffaf0; border-radius: 6px; border-left: 4px solid #dd6b20;">
+                        <h4 style="color: #dd6b20; margin-bottom: 8px;">基础计算方法</h4>
+                        <p style="color: #4a5568; line-height: 1.6;">
+                            • <strong>基线期</strong>: 9月 + 10月数据的平均值<br>
+                            • <strong>当前期</strong>: 最近4周(10.20-11.16)数据的平均值<br>
+                            • <strong>变化率</strong>: (当前期 - 基线期) / 基线期 × 100%<br>
+                            • <strong>变异系数(CV)</strong>: 标准差 / 均值 (用于衡量离散程度)<br>
+                            • <strong>Z-score</strong>: (值 - 均值) / 标准差 (用于异常检测,|Z|>2为异常)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI指标详细分析卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>📊 KPI指标详细分析</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <h4 style="color: #2d3748; margin-bottom: 15px;">三级指标体系完整评估</h4>
+                    <div id="kpi-analysis-content"></div>
+                </div>
+            </div>
+
+            <!-- 描述性统计对比卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>📉 描述性统计对比</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <h4 style="color: #2d3748; margin-bottom: 15px;">基线期 vs 当前期统计指标对比</h4>
+                    <div id="stats-comparison-table"></div>
+                    <div style="margin-top: 30px;">
+                        <h4 style="color: #2d3748; margin-bottom: 15px;">统计解读</h4>
+                        <div id="stats-interpretation"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="personnel-tab" class="tab-content">
+            <!-- Top10用户卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <h3>👥 Top10用户列表</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div id="top10-container"></div>
+                </div>
+            </div>
+
+            <!-- 异常用户检测卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>⚠️ 异常用户检测</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <div class="data-table-container" style="padding: 0;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>序号</th>
+                                    <th>姓名</th>
+                                    <th>异常指标</th>
+                                    <th>当前值</th>
+                                    <th>团队均值</th>
+                                    <th>Z-score</th>
+                                    <th>类型</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="anomaly-body"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #667eea;">
+                        <p style="color: #4a5568; font-size: 14px; line-height: 1.6; margin: 0;">
+                            <strong>📌 检测标准说明:</strong><br>
+                            • 使用 <strong>Z-score 统计方法</strong>检测异常用户(基于全部历史数据)<br>
+                            • Z-score = (用户均值 - 团队均值) / 团队标准差<br>
+                            • <strong>|Z-score| &gt; 1.5</strong> 判定为异常(约覆盖86.6%置信区间)<br>
+                            • Z-score 为正值表示高于团队平均水平,负值表示低于平均水平<br>
+                            • 异常用户需要重点关注其会议负担情况
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 人员分层分析卡片 -->
+            <div class="collapsible-card">
+                <div class="card-header collapsed" onclick="toggleCard(this)">
+                    <h3>📊 人员分层分析</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body collapsed">
+                    <div id="tier-chart" style="min-height: 400px; overflow: visible;"></div>
+                    <div style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #667eea;">
+                        <p style="color: #4a5568; font-size: 14px; line-height: 1.6; margin: 0;">
+                            <strong>📌 分层标准说明:</strong><br>
+                            • <strong style="color: #f56565;">高频用户</strong>: 日均会议数 ≥ 5次/天 (需要重点关注和会议优化)<br>
+                            • <strong style="color: #ed8936;">中频用户</strong>: 日均会议数 2-5次/天 (正常范围,保持监控)<br>
+                            • <strong style="color: #48bb78;">低频用户</strong>: 日均会议数 &lt; 2次/天 (会议负担较轻)<br>
+                            • 以上统计基于 <strong>当前期(最近4周)</strong> 的数据计算
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Detail Modal -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <h2 id="modal-user-name"></h2>
+            <div id="modal-user-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // 数据
+        const dashboardData = {data_json};
+
+        // 卡片折叠/展开功能
+        function toggleCard(headerElement) {{
+            const cardBody = headerElement.nextElementSibling;
+            const isCollapsed = cardBody.classList.contains('collapsed');
+
+            // 切换状态
+            headerElement.classList.toggle('collapsed');
+            cardBody.classList.toggle('collapsed');
+
+            // 保存状态到localStorage
+            const cardTitle = headerElement.querySelector('h3').textContent;
+            const cardStates = JSON.parse(localStorage.getItem('cardStates') || '{{}}');
+            cardStates[cardTitle] = !isCollapsed;
+            localStorage.setItem('cardStates', JSON.stringify(cardStates));
+        }}
+
+        // 恢复卡片状态
+        function restoreCardStates() {{
+            const cardStates = JSON.parse(localStorage.getItem('cardStates') || '{{}}');
+            document.querySelectorAll('.collapsible-card').forEach(card => {{
+                const header = card.querySelector('.card-header');
+                const body = card.querySelector('.card-body');
+                const title = header.querySelector('h3').textContent;
+
+                if (cardStates[title] !== undefined) {{
+                    if (cardStates[title]) {{
+                        // 展开状态
+                        header.classList.remove('collapsed');
+                        body.classList.remove('collapsed');
+                    }} else {{
+                        // 收起状态
+                        header.classList.add('collapsed');
+                        body.classList.add('collapsed');
+                    }}
+                }}
+            }});
+        }}
+
+        // 初始化
+        window.onload = function() {{
+            initPeriodFilter();
+            renderKPICards();
+            fillKPIResults();
+            renderTrendChart();
+            renderTypeChart();
+            renderRawDataTable();
+            renderTop10Users();
+            renderAnomalies();
+            renderTierChart();
+            renderKPIDetailChart();
+            renderStatsChart();
+            restoreCardStates();
+        }};
+
+        // Tab切换
+        function switchTab(tabName) {{
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
+
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // 如果是通过事件触发,高亮对应按钮;否则找到对应按钮并高亮
+            if (window.event && window.event.target) {{
+                window.event.target.classList.add('active');
+            }} else {{
+                // 通过onclick属性找到对应的按钮
+                const targetBtn = Array.from(document.querySelectorAll('.nav-tab')).find(
+                    btn => btn.getAttribute('onclick') === `switchTab('${{tabName}}')`
+                );
+                if (targetBtn) {{
+                    targetBtn.classList.add('active');
+                }}
+            }}
+        }}
+
+        // 渲染KPI卡片
+        function renderKPICards() {{
+            const container = document.getElementById('kpi-cards');
+            const kpis = dashboardData.kpis['主要KPI'];
+
+            let html = '';
+            Object.entries(kpis).forEach(([name, data]) => {{
+                const status = data['达标'] ? '达标' : '未达标';
+
+                // 根据指标类型获取正确的字段
+                let baseline, current, changeRate;
+                if (name.includes('占比') || name.includes('下降')) {{
+                    baseline = Math.round(data['基线期占比(%)'] || 0);
+                    current = Math.round(data['当前期占比(%)'] || 0);
+                    changeRate = Math.round(data['下降幅度(百分点)'] || 0);
+                }} else {{
+                    baseline = Math.round(data['基线期均值'] || data['基线期均值(分钟)'] || 0);
+                    current = Math.round(data['当前期均值'] || data['当前期均值(分钟)'] || 0);
+                    changeRate = Math.round(data['减少率(%)'] || 0);
+                }}
+
+                const isPositive = changeRate > 0;
+
+                // 根据指标类型确定单位
+                let unit = '';
+                if (name.includes('会议数')) {{
+                    unit = '次';
+                }} else if (name.includes('时长')) {{
+                    unit = '分钟';
+                }} else if (name.includes('占比') || name.includes('下降')) {{
+                    unit = '%';
+                }}
+
+                html += `
+                    <div class="kpi-card ${{status}}" onclick="jumpToAnalysis('${{name}}')" style="cursor: pointer;">
+                        <div class="kpi-title">${{name}}</div>
+                        <div class="kpi-comparison">
+                            <div class="kpi-period">
+                                <span class="period-label">基线期</span>
+                                <span class="period-value">${{baseline}}${{unit}}</span>
+                            </div>
+                            <div class="kpi-arrow">→</div>
+                            <div class="kpi-period">
+                                <span class="period-label">当前期</span>
+                                <span class="period-value">${{current}}${{unit}}</span>
+                            </div>
+                        </div>
+                        <div class="kpi-change ${{isPositive ? 'positive' : 'negative'}}">
+                            ${{isPositive ? '↑' : '↓'}} ${{Math.abs(changeRate)}}%
+                        </div>
+                        <div class="kpi-status ${{status}}">${{status}}</div>
+                    </div>
+                `;
+            }});
+
+            container.innerHTML = html;
+        }}
+
+        // 跳转到分析结果页面
+        function jumpToAnalysis(kpiName) {{
+            // 切换到分析结果标签页
+            switchTab('analysis');
+
+            // 根据KPI名称确定对应的结果元素ID
+            let targetId = '';
+            if (kpiName.includes('会议数减少率')) {{
+                targetId = 'kpi1-result';
+            }} else if (kpiName.includes('时长减少率')) {{
+                targetId = 'kpi2-result';
+            }} else if (kpiName.includes('即时会议占比')) {{
+                targetId = 'kpi3-result';
+            }}
+
+            // 滚动到对应的指标详情
+            setTimeout(() => {{
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {{
+                    // 滚动到该元素的父容器(包含标题和内容的div)
+                    const parentSection = targetElement.closest('div[style*="border-left"]');
+                    if (parentSection) {{
+                        parentSection.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                        // 高亮显示该区域
+                        parentSection.style.transition = 'background-color 0.5s';
+                        const originalBg = parentSection.style.background;
+                        parentSection.style.background = '#fff3cd';
+                        setTimeout(() => {{
+                            parentSection.style.background = originalBg;
+                        }}, 2000);
+                    }}
+                }}
+            }}, 300);
+        }}
+
+        // 渲染趋势图
+        function renderTrendChart() {{
+            const chart = echarts.init(document.getElementById('trend-chart'));
+            const periods = dashboardData.period_comparison;
+
+            const option = {{
+                tooltip: {{ trigger: 'axis' }},
+                legend: {{ data: ['日人均会议数', '日人均时长'] }},
+                xAxis: {{
+                    type: 'category',
+                    data: periods.map(p => p['周期'])
+                }},
+                yAxis: [
+                    {{ type: 'value', name: '会议数(次)' }},
+                    {{ type: 'value', name: '时长(分钟)' }}
+                ],
+                series: [
+                    {{
+                        name: '日人均会议数',
+                        type: 'line',
+                        data: periods.map(p => p['日人均会议数']),
+                        smooth: true,
+                        itemStyle: {{ color: '#667eea' }}
+                    }},
+                    {{
+                        name: '日人均时长',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: periods.map(p => p['日人均会议时长(分钟)']),
+                        smooth: true,
+                        itemStyle: {{ color: '#764ba2' }}
+                    }}
+                ]
+            }};
+
+            chart.setOption(option);
+        }}
+
+        // 渲染会议类型分布图
+        function renderTypeChart() {{
+            const chart = echarts.init(document.getElementById('type-chart'));
+
+            // 这里简化处理,实际应该从数据中计算
+            const option = {{
+                tooltip: {{ trigger: 'item' }},
+                legend: {{ data: ['日程会议', '即时会议', '1v1通话'] }},
+                series: [
+                    {{
+                        name: '基线期',
+                        type: 'pie',
+                        radius: ['40%', '55%'],
+                        center: ['25%', '50%'],
+                        data: [
+                            {{ value: 38.9, name: '日程会议' }},
+                            {{ value: 30.5, name: '即时会议' }},
+                            {{ value: 30.6, name: '1v1通话' }}
+                        ]
+                    }},
+                    {{
+                        name: '当前期',
+                        type: 'pie',
+                        radius: ['40%', '55%'],
+                        center: ['75%', '50%'],
+                        data: [
+                            {{ value: 48.1, name: '日程会议' }},
+                            {{ value: 21.7, name: '即时会议' }},
+                            {{ value: 29.3, name: '1v1通话' }}
+                        ]
+                    }}
+                ]
+            }};
+
+            chart.setOption(option);
+        }}
+
+        // 渲染原始数据表格
+        let currentSortField = null;
+        let currentSortOrder = 'asc';
+        let rawDataCache = [];
+
+        function renderRawDataTable(data = null) {{
+            const tbody = document.getElementById('raw-data-body');
+            const dataToRender = data || rawDataCache;
+
+            if (!data) {{
+                rawDataCache = [...dashboardData.raw_data];
+            }}
+
+            let html = '';
+            dataToRender.forEach((row, index) => {{
+                html += `
+                    <tr>
+                        <td>${{index + 1}}</td>
+                        <td>${{row.user_name}}</td>
+                        <td>${{row.period_name}}</td>
+                        <td>${{Math.round(row['人的会议数'] || 0)}}</td>
+                        <td>${{Math.round(row['即时会议数'] || row['即时会议'] || 0)}}</td>
+                        <td>${{Math.round(row['日程会议'] || 0)}}</td>
+                        <td>${{Math.round(row['1v1通话数'] || 0)}}</td>
+                        <td>${{Math.round(row['日人均线上会议数'] || 0)}}</td>
+                        <td>${{Math.round(row['日人均线上会议时长(分钟)'] || 0)}}</td>
+                        <td><button class="btn btn-secondary" onclick="showUserDetail('${{row.user_name}}')">详情</button></td>
+                    </tr>
+                `;
+            }});
+
+            tbody.innerHTML = html;
+        }}
+
+        function sortTable(field) {{
+            const headers = document.querySelectorAll('#raw-data-table th[data-sort]');
+
+            // 切换排序顺序
+            if (currentSortField === field) {{
+                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+            }} else {{
+                currentSortField = field;
+                currentSortOrder = 'asc';
+            }}
+
+            // 更新表头样式
+            headers.forEach(th => {{
+                th.classList.remove('sorted-asc', 'sorted-desc');
+                if (th.dataset.sort === field) {{
+                    th.classList.add(currentSortOrder === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                }}
+            }});
+
+            // 排序数据
+            const sortedData = [...rawDataCache].sort((a, b) => {{
+                let valA = a[field];
+                let valB = b[field];
+
+                // 特殊处理周期字段 - 使用自定义顺序
+                if (field === 'period_name') {{
+                    const periodOrder = [
+                        '9月会议详情',
+                        '10月会议详情',
+                        '10.20-10.26会议详情',
+                        '10.27-11.2会议详情',
+                        '11.03-11.09会议详情',
+                        '11.10-11.16会议详情'
+                    ];
+
+                    const indexA = periodOrder.indexOf(valA);
+                    const indexB = periodOrder.indexOf(valB);
+
+                    // 如果不在预定义列表中,放到最后
+                    const finalA = indexA === -1 ? 999 : indexA;
+                    const finalB = indexB === -1 ? 999 : indexB;
+
+                    return currentSortOrder === 'asc' ? finalA - finalB : finalB - finalA;
+                }}
+
+                // 处理数字
+                if (typeof valA === 'number' && typeof valB === 'number') {{
+                    return currentSortOrder === 'asc' ? valA - valB : valB - valA;
+                }}
+
+                // 处理字符串
+                valA = String(valA || '');
+                valB = String(valB || '');
+
+                if (currentSortOrder === 'asc') {{
+                    return valA.localeCompare(valB, 'zh-CN');
+                }} else {{
+                    return valB.localeCompare(valA, 'zh-CN');
+                }}
+            }});
+
+            renderRawDataTable(sortedData);
+        }}
+
+        // 为表头添加点击事件
+        document.addEventListener('DOMContentLoaded', () => {{
+            const headers = document.querySelectorAll('#raw-data-table th[data-sort]');
+            headers.forEach(th => {{
+                th.addEventListener('click', () => {{
+                    sortTable(th.dataset.sort);
+                }});
+            }});
+        }});
+
+        // 渲染Top10用户
+        function renderTop10Users() {{
+            const container = document.getElementById('top10-container');
+            const users = dashboardData.top10_users;
+
+            let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">';
+            users.forEach(user => {{
+                const statusClass = user.change_rate < 0 ? 'positive' : 'negative';
+                const statusColor = user.status === '改善' ? '#48bb78' : '#f56565';
+                const isTop3 = user.rank <= 3;
+
+                // 前三名特殊样式
+                let rankBg = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                if (user.rank === 1) {{
+                    rankBg = 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)'; // 金色
+                }} else if (user.rank === 2) {{
+                    rankBg = 'linear-gradient(135deg, #C0C0C0 0%, #808080 100%)'; // 银色
+                }} else if (user.rank === 3) {{
+                    rankBg = 'linear-gradient(135deg, #CD7F32 0%, #8B4513 100%)'; // 铜色
+                }}
+
+                const cardStyle = isTop3 ? 'border: 2px solid #667eea; box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);' : '';
+
+                html += `
+                    <div class="user-card" onclick="showUserDetail('${{user.user_name}}')" style="${{cardStyle}}">
+                        <div class="user-card-header">
+                            <div class="user-rank" style="background: ${{rankBg}};">#${{user.rank}}</div>
+                            <div class="user-name">${{user.user_name}}</div>
+                        </div>
+                        <div class="user-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">基线期</div>
+                                <div class="stat-value">${{Math.round(user.baseline_meetings)}}次</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">当前期</div>
+                                <div class="stat-value">${{Math.round(user.current_meetings)}}次</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">变化率</div>
+                                <div class="stat-value" style="color: ${{statusColor}};">${{Math.round(user.change_rate)}}%</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">状态</div>
+                                <div class="stat-value" style="color: ${{statusColor}}; font-weight: bold;">${{user.status}}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }});
+            html += '</div>';
+
+            container.innerHTML = html;
+        }}
+
+        // 渲染异常用户
+        function renderAnomalies() {{
+            const tbody = document.getElementById('anomaly-body');
+            const anomalies = dashboardData.anomalies;
+
+            let html = '';
+            anomalies.forEach((item, index) => {{
+                html += `
+                    <tr>
+                        <td>${{index + 1}}</td>
+                        <td>${{item.user_name}}</td>
+                        <td>${{item.metric}}</td>
+                        <td>${{item.value}}</td>
+                        <td>${{item.mean}}</td>
+                        <td>${{item.z_score}}</td>
+                        <td>${{item.type}}</td>
+                        <td><button class="btn btn-secondary" onclick="showUserDetail('${{item.user_name}}')">详情</button></td>
+                    </tr>
+                `;
+            }});
+
+            tbody.innerHTML = html;
+        }}
+
+        // 渲染人员分层图表
+        function renderTierChart() {{
+            const tiers = dashboardData.user_tiers;
+            const container = document.getElementById('tier-chart');
+
+            // 创建详细的分层展示
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <!-- 高频用户 -->
+                    <div style="background: linear-gradient(135deg, #f56565 0%, #fc8181 100%); padding: 20px; border-radius: 10px; color: white;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 18px;">🔴 高频用户</h3>
+                        <p style="font-size: 14px; margin: 5px 0; opacity: 0.9;">≥ 5次/天</p>
+                        <p style="font-size: 36px; font-weight: bold; margin: 10px 0;">${{tiers.high.length}}</p>
+                        <p style="font-size: 14px; margin: 5px 0;">人员占比: ${{((tiers.high.length / (tiers.high.length + tiers.medium.length + tiers.low.length)) * 100).toFixed(1)}}%</p>
+                    </div>
+
+                    <!-- 中频用户 -->
+                    <div style="background: linear-gradient(135deg, #ed8936 0%, #f6ad55 100%); padding: 20px; border-radius: 10px; color: white;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 18px;">🟡 中频用户</h3>
+                        <p style="font-size: 14px; margin: 5px 0; opacity: 0.9;">2-5次/天</p>
+                        <p style="font-size: 36px; font-weight: bold; margin: 10px 0;">${{tiers.medium.length}}</p>
+                        <p style="font-size: 14px; margin: 5px 0;">人员占比: ${{((tiers.medium.length / (tiers.high.length + tiers.medium.length + tiers.low.length)) * 100).toFixed(1)}}%</p>
+                    </div>
+
+                    <!-- 低频用户 -->
+                    <div style="background: linear-gradient(135deg, #48bb78 0%, #68d391 100%); padding: 20px; border-radius: 10px; color: white;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 18px;">🟢 低频用户</h3>
+                        <p style="font-size: 14px; margin: 5px 0; opacity: 0.9;">&lt; 2次/天</p>
+                        <p style="font-size: 36px; font-weight: bold; margin: 10px 0;">${{tiers.low.length}}</p>
+                        <p style="font-size: 14px; margin: 5px 0;">人员占比: ${{((tiers.low.length / (tiers.high.length + tiers.medium.length + tiers.low.length)) * 100).toFixed(1)}}%</p>
+                    </div>
+                </div>
+
+                <!-- 详细人员列表 -->
+                <div style="margin-top: 30px;">
+                    <h4 style="color: #2d3748; margin-bottom: 15px;">📋 各层级人员详情</h4>
+
+                    <!-- 高频用户详情 -->
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: #f56565; margin-bottom: 10px;">🔴 高频用户 (≥5次/天)</h5>
+                        <div style="background: #fff5f5; padding: 15px; border-radius: 8px; border-left: 4px solid #f56565;">
+                            ${{tiers.high.length > 0 ?
+                                tiers.high.map(u => `<span style="display: inline-block; margin: 5px; padding: 5px 10px; background: white; border-radius: 5px; font-size: 13px;">${{u.user_name}} (平均${{u.meetings}}次/天)</span>`).join('')
+                                : '<p style="color: #718096;">暂无高频用户</p>'
+                            }}
+                        </div>
+                    </div>
+
+                    <!-- 中频用户详情 -->
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: #ed8936; margin-bottom: 10px;">🟡 中频用户 (2-5次/天)</h5>
+                        <div style="background: #fffaf0; padding: 15px; border-radius: 8px; border-left: 4px solid #ed8936;">
+                            ${{tiers.medium.length > 0 ?
+                                tiers.medium.map(u => `<span style="display: inline-block; margin: 5px; padding: 5px 10px; background: white; border-radius: 5px; font-size: 13px;">${{u.user_name}} (平均${{u.meetings}}次/天)</span>`).join('')
+                                : '<p style="color: #718096;">暂无中频用户</p>'
+                            }}
+                        </div>
+                    </div>
+
+                    <!-- 低频用户详情 -->
+                    <div>
+                        <h5 style="color: #48bb78; margin-bottom: 10px;">🟢 低频用户 (&lt;2次/天)</h5>
+                        <div style="background: #f0fff4; padding: 15px; border-radius: 8px; border-left: 4px solid #48bb78;">
+                            ${{tiers.low.length > 0 ?
+                                tiers.low.map(u => `<span style="display: inline-block; margin: 5px; padding: 5px 10px; background: white; border-radius: 5px; font-size: 13px;">${{u.user_name}} (平均${{u.meetings}}次/天)</span>`).join('')
+                                : '<p style="color: #718096;">暂无低频用户</p>'
+                            }}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }}
+
+        // 渲染KPI详细分析图
+        // 填充KPI计算结果
+        function fillKPIResults() {{
+            const primaryKPIs = dashboardData.kpis['主要KPI'];
+            const secondaryKPIs = dashboardData.kpis['次要KPI'] || {{}};
+
+            // 填充一级指标结果
+            const kpi1 = primaryKPIs['日人均会议数减少率'];
+            if (kpi1) {{
+                document.getElementById('kpi1-result').innerHTML = `
+                    <p style="margin: 5px 0;"><strong>基线期均值:</strong> ${{Math.round(kpi1['基线期均值'])}}次/天</p>
+                    <p style="margin: 5px 0;"><strong>当前期均值:</strong> ${{Math.round(kpi1['当前期均值'])}}次/天</p>
+                    <p style="margin: 5px 0; color: ${{kpi1['减少率(%)'] > 0 ? '#48bb78' : '#f56565'}};"><strong>减少率:</strong> ${{Math.round(kpi1['减少率(%)'])}}% ${{kpi1['达标'] ? '✅ 达标' : '❌ 未达标'}}</p>
+                `;
+            }}
+
+            const kpi2 = primaryKPIs['日人均会议时长减少率'];
+            if (kpi2) {{
+                document.getElementById('kpi2-result').innerHTML = `
+                    <p style="margin: 5px 0;"><strong>基线期均值:</strong> ${{Math.round(kpi2['基线期均值(分钟)'])}}分钟/天</p>
+                    <p style="margin: 5px 0;"><strong>当前期均值:</strong> ${{Math.round(kpi2['当前期均值(分钟)'])}}分钟/天</p>
+                    <p style="margin: 5px 0; color: ${{kpi2['减少率(%)'] > 0 ? '#48bb78' : '#f56565'}};"><strong>减少率:</strong> ${{Math.round(kpi2['减少率(%)'])}}% ${{kpi2['达标'] ? '✅ 达标' : '❌ 未达标'}}</p>
+                `;
+            }}
+
+            const kpi3 = primaryKPIs['即时会议占比下降'];
+            if (kpi3) {{
+                document.getElementById('kpi3-result').innerHTML = `
+                    <p style="margin: 5px 0;"><strong>基线期占比:</strong> ${{Math.round(kpi3['基线期占比(%)'])}}%</p>
+                    <p style="margin: 5px 0;"><strong>当前期占比:</strong> ${{Math.round(kpi3['当前期占比(%)'])}}%</p>
+                    <p style="margin: 5px 0; color: ${{kpi3['下降幅度(百分点)'] > 0 ? '#48bb78' : '#f56565'}};"><strong>下降幅度:</strong> ${{Math.round(kpi3['下降幅度(百分点)'])}}个百分点 ${{kpi3['达标'] ? '✅ 达标' : '❌ 未达标'}}</p>
+                `;
+            }}
+
+            // 填充二级指标结果
+            const kpi4 = secondaryKPIs['1v1通话占比'];
+            if (kpi4) {{
+                const decline = Math.round(kpi4['下降幅度(百分点)'] || 0);
+                const status = kpi4['状态'] || '未知';
+                document.getElementById('kpi4-result').innerHTML = `
+                    <strong>基线期:</strong> ${{Math.round(kpi4['基线期1v1占比(%)'])}}% →
+                    <strong>当前期:</strong> ${{Math.round(kpi4['当前期1v1占比(%)'])}}%
+                    (<span style="color: ${{decline > 0 ? '#48bb78' : '#f56565'}};">下降${{decline}}个百分点</span>)
+                    ${{kpi4['达标'] === true ? '✅ ' + status : '❌ ' + status}}
+                `;
+            }}
+
+            const kpi5 = secondaryKPIs['团队会议负担分布均衡度'];
+            if (kpi5) {{
+                document.getElementById('kpi5-result').innerHTML = `
+                    <strong>基线期CV:</strong> ${{(kpi5['基线期变异系数'] || 0).toFixed(2)}} →
+                    <strong>当前期CV:</strong> ${{(kpi5['当前期变异系数'] || 0).toFixed(2)}}
+                    (<span style="color: #48bb78;">改善${{Math.round(kpi5['均衡度改善(%)'] || 0)}}%</span>)
+                    ${{kpi5['达标'] ? '✅ 达标' : '❌ 未达标'}}
+                `;
+            }}
+        }}
+
+        // 渲染KPI详细分析
+        function renderKPIDetailChart() {{
+            const primaryKPIs = dashboardData.kpis['主要KPI'];
+            const secondaryKPIs = dashboardData.kpis['次要KPI'] || {{}};
+            const container = document.getElementById('kpi-analysis-content');
+
+            let html = `
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <thead>
+                        <tr style="background: #f7fafc;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">指标层级</th>
+                            <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">指标名称</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">基线期</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">当前期</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">变化</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">目标</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            // 一级指标
+            const kpi1 = primaryKPIs['日人均会议数减少率'];
+            if (kpi1) {{
+                const change = Math.round(kpi1['减少率(%)']);
+                html += `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #667eea;">一级指标</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0;">日人均会议数减少率</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi1['基线期均值'])}}次</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi1['当前期均值'])}}次</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{change > 0 ? '#48bb78' : '#f56565'}};">${{change}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">≥10%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{kpi1['达标'] ? '✅ 达标' : '❌ 未达标'}}</td>
+                    </tr>
+                `;
+            }}
+
+            const kpi2 = primaryKPIs['日人均会议时长减少率'];
+            if (kpi2) {{
+                const change = Math.round(kpi2['减少率(%)']);
+                html += `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #667eea;">一级指标</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0;">日人均会议时长减少率</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi2['基线期均值(分钟)'])}}分钟</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi2['当前期均值(分钟)'])}}分钟</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{change > 0 ? '#48bb78' : '#f56565'}};">${{change}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">≥10%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{kpi2['达标'] ? '✅ 达标' : '❌ 未达标'}}</td>
+                    </tr>
+                `;
+            }}
+
+            const kpi3 = primaryKPIs['即时会议占比下降'];
+            if (kpi3) {{
+                const change = Math.round(kpi3['下降幅度(百分点)']);
+                html += `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #667eea;">一级指标</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0;">即时会议占比下降</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi3['基线期占比(%)'])}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi3['当前期占比(%)'])}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{change > 0 ? '#48bb78' : '#f56565'}};">${{change}}个百分点</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">≥10个百分点</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{kpi3['达标'] ? '✅ 达标' : '❌ 未达标'}}</td>
+                    </tr>
+                `;
+            }}
+
+            // 二级指标
+            const kpi4 = secondaryKPIs['1v1通话占比'];
+            if (kpi4) {{
+                const decline = Math.round(kpi4['下降幅度(百分点)'] || 0);
+                const status = kpi4['状态'] || '未知';
+                html += `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #48bb78;">二级指标</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0;">1v1通话占比</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi4['基线期1v1占比(%)'])}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{Math.round(kpi4['当前期1v1占比(%)'])}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{decline > 0 ? '#48bb78' : '#f56565'}};">下降${{decline}}个百分点</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">减少5-10个百分点</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{kpi4['达标'] ? '✅ ' + status : '❌ ' + status}}</td>
+                    </tr>
+                `;
+            }}
+
+            const kpi5 = secondaryKPIs['团队会议负担分布均衡度'];
+            if (kpi5) {{
+                const change = Math.round(kpi5['均衡度改善(%)']);
+                html += `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #48bb78;">二级指标</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0;">团队负担均衡度</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">CV=${{(kpi5['基线期变异系数'] || 0).toFixed(2)}}</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">CV=${{(kpi5['当前期变异系数'] || 0).toFixed(2)}}</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: #48bb78;">改善${{change}}%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">CV下降≥10%</td>
+                        <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{kpi5['达标'] ? '✅ 达标' : '❌ 未达标'}}</td>
+                    </tr>
+                `;
+            }}
+
+            html += `
+                    </tbody>
+                </table>
+
+                <div style="background: #fffaf0; padding: 15px; border-radius: 8px; border-left: 4px solid #dd6b20;">
+                    <h4 style="color: #dd6b20; margin-bottom: 10px;">💡 综合评估</h4>
+                    <p style="color: #4a5568; line-height: 1.8;">
+                        根据三级指标体系的评估结果:
+                    </p>
+                    <ul style="color: #4a5568; line-height: 2; padding-left: 20px;">
+                        <li><strong>一级指标</strong>: 目前有 <span style="color: #f56565; font-weight: bold;">${{Object.values(primaryKPIs).filter(k => !k['达标']).length}}/3</span> 项未达标,需要重点改进</li>
+                        <li><strong>二级指标</strong>:
+                            <span id="secondary-kpi-summary"></span>
+                            <script>
+                                (function() {{
+                                    const kpi4passed = secondaryKPIs['1v1通话占比']?.['达标'] || false;
+                                    const kpi5passed = secondaryKPIs['团队会议负担分布均衡度']?.['达标'] || false;
+                                    const passedCount = (kpi4passed ? 1 : 0) + (kpi5passed ? 1 : 0);
+                                    let text = '';
+                                    if (passedCount === 2) {{
+                                        text = '<span style="color: #48bb78; font-weight: bold;">全部达标</span>,团队负担均衡度改善,1v1通话占比下降至合理区间';
+                                    }} else if (passedCount === 1) {{
+                                        text = '部分达标,' + (kpi4passed ? '1v1通话占比已达标' : '团队均衡度已达标') + ',继续保持';
+                                    }} else {{
+                                        text = '需要改进';
+                                    }}
+                                    document.getElementById('secondary-kpi-summary').innerHTML = text;
+                                }})();
+                            </script>
+                        </li>
+                        <li><strong>改善建议</strong>: 建议加强会议管理制度执行,严格控制会议数量和时长,提高会议计划性,鼓励多人协作会议替代过多的1v1沟通</li>
+                    </ul>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }}
+
+        // 渲染统计对比
+        function renderStatsChart() {{
+            const baselineStats = dashboardData.baseline_stats;
+            const currentStats = dashboardData.current_stats;
+
+            // 渲染统计对比表格
+            const tableContainer = document.getElementById('stats-comparison-table');
+            let tableHtml = `
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f7fafc;">
+                            <th style="padding: 12px; text-align: left; border: 1px solid #e2e8f0;">统计指标</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">基线期<br>(9月+10月)</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">当前期<br>(最近4周)</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">变化</th>
+                            <th style="padding: 12px; text-align: center; border: 1px solid #e2e8f0;">变化率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            // 日人均会议数统计
+            if (baselineStats && currentStats) {{
+                const baselineMeetings = baselineStats['日人均会议数'] || {{}};
+                const currentMeetings = currentStats['日人均会议数'] || {{}};
+
+                const stats = [
+                    {{ name: '均值', baseline: baselineMeetings['均值'], current: currentMeetings['均值'], unit: '次' }},
+                    {{ name: '标准差', baseline: baselineMeetings['标准差'], current: currentMeetings['标准差'], unit: '次' }},
+                    {{ name: '中位数', baseline: baselineMeetings['中位数'], current: currentMeetings['中位数'], unit: '次' }},
+                    {{ name: '最小值', baseline: baselineMeetings['最小值'], current: currentMeetings['最小值'], unit: '次' }},
+                    {{ name: '最大值', baseline: baselineMeetings['最大值'], current: currentMeetings['最大值'], unit: '次' }},
+                    {{ name: '变异系数', baseline: baselineMeetings['变异系数'], current: currentMeetings['变异系数'], unit: '' }}
+                ];
+
+                stats.forEach(stat => {{
+                    const baseline = stat.baseline || 0;
+                    const current = stat.current || 0;
+                    const change = current - baseline;
+                    const changeRate = baseline !== 0 ? ((change / baseline) * 100) : 0;
+                    const changeColor = change > 0 ? '#f56565' : change < 0 ? '#48bb78' : '#4a5568';
+
+                    tableHtml += `
+                        <tr>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600;">日人均会议数 - ${{stat.name}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{baseline.toFixed(2)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{current.toFixed(2)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{changeColor}};">${{change > 0 ? '+' : ''}}${{change.toFixed(2)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{changeColor}};">${{changeRate > 0 ? '+' : ''}}${{changeRate.toFixed(1)}}%</td>
+                        </tr>
+                    `;
+                }});
+
+                // 日人均会议时长统计
+                const baselineDuration = baselineStats['日人均会议时长'] || {{}};
+                const currentDuration = currentStats['日人均会议时长'] || {{}};
+
+                const durationStats = [
+                    {{ name: '均值', baseline: baselineDuration['均值'], current: currentDuration['均值'], unit: '分钟' }},
+                    {{ name: '标准差', baseline: baselineDuration['标准差'], current: currentDuration['标准差'], unit: '分钟' }},
+                    {{ name: '中位数', baseline: baselineDuration['中位数'], current: currentDuration['中位数'], unit: '分钟' }},
+                    {{ name: '最小值', baseline: baselineDuration['最小值'], current: currentDuration['最小值'], unit: '分钟' }},
+                    {{ name: '最大值', baseline: baselineDuration['最大值'], current: currentDuration['最大值'], unit: '分钟' }},
+                    {{ name: '变异系数', baseline: baselineDuration['变异系数'], current: currentDuration['变异系数'], unit: '' }}
+                ];
+
+                durationStats.forEach(stat => {{
+                    const baseline = stat.baseline || 0;
+                    const current = stat.current || 0;
+                    const change = current - baseline;
+                    const changeRate = baseline !== 0 ? ((change / baseline) * 100) : 0;
+                    const changeColor = change > 0 ? '#f56565' : change < 0 ? '#48bb78' : '#4a5568';
+
+                    // 对于变异系数,保留小数;其他值取整
+                    const formatValue = (val, name) => {{
+                        if (name === '变异系数') return val.toFixed(2);
+                        return Math.round(val);
+                    }};
+
+                    tableHtml += `
+                        <tr>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: 600;">日人均会议时长 - ${{stat.name}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{formatValue(baseline, stat.name)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center;">${{formatValue(current, stat.name)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{changeColor}};">${{change > 0 ? '+' : ''}}${{formatValue(change, stat.name)}}${{stat.unit}}</td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; text-align: center; color: ${{changeColor}};">${{changeRate > 0 ? '+' : ''}}${{changeRate.toFixed(1)}}%</td>
+                        </tr>
+                    `;
+                }});
+            }}
+
+            tableHtml += `
+                    </tbody>
+                </table>
+            `;
+
+            tableContainer.innerHTML = tableHtml;
+
+            // 渲染统计解读
+            const interpretation = document.getElementById('stats-interpretation');
+            interpretation.innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                        <h5 style="color: #667eea; margin-bottom: 10px;">📊 均值分析</h5>
+                        <p style="color: #4a5568; line-height: 1.6; font-size: 14px;">
+                            均值反映团队整体平均水平。当前期均值上升表明会议负担增加,需要采取措施控制会议总量。
+                        </p>
+                    </div>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #48bb78;">
+                        <h5 style="color: #48bb78; margin-bottom: 10px;">📏 标准差分析</h5>
+                        <p style="color: #4a5568; line-height: 1.6; font-size: 14px;">
+                            标准差反映数据波动程度。标准差增大说明团队成员间会议负担差异扩大。
+                        </p>
+                    </div>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #f6ad55;">
+                        <h5 style="color: #dd6b20; margin-bottom: 10px;">📈 变异系数(CV)</h5>
+                        <p style="color: #4a5568; line-height: 1.6; font-size: 14px;">
+                            CV = 标准差/均值,用于衡量均衡度。CV下降表明会议分布更均衡,这是积极信号。
+                        </p>
+                    </div>
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #9f7aea;">
+                        <h5 style="color: #6b46c1; margin-bottom: 10px;">🎯 中位数分析</h5>
+                        <p style="color: #4a5568; line-height: 1.6; font-size: 14px;">
+                            中位数代表中间位置的值,不受极端值影响,能更真实反映大多数人的状况。
+                        </p>
+                    </div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); padding: 20px; border-radius: 8px; margin-top: 20px;">
+                    <h5 style="color: #2d3748; margin-bottom: 15px;">💡 综合统计结论</h5>
+                    <ul style="color: #4a5568; line-height: 2; padding-left: 20px;">
+                        <li><strong>整体趋势:</strong> 会议数量和时长均值上升,说明会议负担在增加</li>
+                        <li><strong>分布改善:</strong> 变异系数下降,说明会议分布更加均衡</li>
+                        <li><strong>极值关注:</strong> 最大值显著偏高,需要重点关注高频会议用户</li>
+                        <li><strong>改进方向:</strong> 在保持均衡性的同时,需要降低整体会议强度</li>
+                    </ul>
+                </div>
+            `;
+        }}
+
+        // 显示用户详情
+        function showUserDetail(userName) {{
+            const modal = document.getElementById('user-modal');
+            const user = dashboardData.top10_users.find(u => u.user_name === userName);
+
+            if (!user) {{
+                alert('未找到该用户的详细数据');
+                return;
+            }}
+
+            document.getElementById('modal-user-name').textContent = userName + ' - 个人详情';
+
+            let html = `
+                <div style="margin: 20px 0;">
+                    <h3>基本信息</h3>
+                    <div class="user-stats" style="margin-top: 15px;">
+                        <div class="stat-item">
+                            <div class="stat-label">基线期日均会议</div>
+                            <div class="stat-value">${{user.baseline_meetings}}次</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">当前期日均会议</div>
+                            <div class="stat-value">${{user.current_meetings}}次</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">变化率</div>
+                            <div class="stat-value">${{user.change_rate}}%</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">状态</div>
+                            <div class="stat-value">${{user.status}}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 30px;">历史数据</h3>
+                <div class="data-table-container" style="margin-top: 15px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>周期</th>
+                                <th>总会议数</th>
+                                <th>日均会议数</th>
+                                <th>日均时长</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            user.history.forEach(record => {{
+                html += `
+                    <tr>
+                        <td>${{record.period_name}}</td>
+                        <td>${{record['人的会议数']}}</td>
+                        <td>${{record['日人均线上会议数']?.toFixed(2)}}</td>
+                        <td>${{record['日人均线上会议时长(分钟)']?.toFixed(2)}}分钟</td>
+                    </tr>
+                `;
+            }});
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.getElementById('modal-user-content').innerHTML = html;
+            modal.classList.add('active');
+        }}
+
+        // 关闭模态框
+        function closeModal() {{
+            document.getElementById('user-modal').classList.remove('active');
+        }}
+
+        // 显示KPI详情
+        function showKPIDetail(kpiName) {{
+            alert('KPI详情: ' + kpiName + '\\n功能开发中...');
+        }}
+
+        // 填充周期筛选器
+        // 初始化时间段筛选器
+        function initPeriodFilter() {{
+            const periodFilter = document.getElementById('period-filter');
+
+            // 获取唯一的周期列表并去重
+            const uniquePeriods = [...new Set(dashboardData.raw_data.map(row => row.period_name))];
+
+            // 定义周期的正确顺序
+            const periodOrder = [
+                '9月会议详情',
+                '10月会议详情',
+                '10.20-10.26会议详情',
+                '10.27-11.2会议详情',
+                '11.03-11.09会议详情',
+                '11.10-11.16会议详情'
+            ];
+
+            // 按照定义的顺序排序
+            const sortedPeriods = uniquePeriods.sort((a, b) => {{
+                const indexA = periodOrder.indexOf(a);
+                const indexB = periodOrder.indexOf(b);
+                // 如果周期不在预定义列表中,放到最后
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            }});
+
+            sortedPeriods.forEach(period => {{
+                const option = document.createElement('option');
+                option.value = period;
+                option.textContent = period;
+                periodFilter.appendChild(option);
+            }});
+        }}
+
+        // 搜索和筛选功能
+        function handleSearchKeypress(event) {{
+            if (event.key === 'Enter') {{
+                filterRawData();
+            }}
+        }}
+
+        function filterRawData() {{
+            const periodFilter = document.getElementById('period-filter').value;
+            const searchUser = document.getElementById('search-user').value.trim().toLowerCase();
+
+            let filteredData = [...dashboardData.raw_data];
+
+            // 按时间段筛选
+            if (periodFilter !== 'all') {{
+                filteredData = filteredData.filter(row => row.period_name === periodFilter);
+            }}
+
+            // 按人员搜索
+            if (searchUser) {{
+                filteredData = filteredData.filter(row =>
+                    row.user_name.toLowerCase().includes(searchUser)
+                );
+            }}
+
+            // 渲染筛选后的数据
+            rawDataCache = filteredData;
+            renderRawDataTable(filteredData);
+
+            // 显示搜索结果统计
+            const resultInfo = document.getElementById('search-result-info');
+            if (resultInfo) {{
+                resultInfo.textContent = `找到 ${{filteredData.length}} 条记录`;
+            }}
+        }}
+
+        function resetFilter() {{
+            document.getElementById('period-filter').value = 'all';
+            document.getElementById('search-user').value = '';
+            rawDataCache = [...dashboardData.raw_data];
+            renderRawDataTable();
+
+            const resultInfo = document.getElementById('search-result-info');
+            if (resultInfo) {{
+                resultInfo.textContent = '';
+            }}
+        }}
+
+        function exportData() {{
+            const dataStr = JSON.stringify(dashboardData, null, 2);
+            const blob = new Blob([dataStr], {{ type: 'application/json' }});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'meeting_data_' + new Date().getTime() + '.json';
+            a.click();
+        }}
+
+        // 响应式图表
+        window.addEventListener('resize', () => {{
+            echarts.getInstanceByDom(document.getElementById('trend-chart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('type-chart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('tier-chart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('kpi-detail-chart'))?.resize();
+            echarts.getInstanceByDom(document.getElementById('stats-chart'))?.resize();
+        }});
+    </script>
+</body>
+</html>'''
+
+        return html
+
+
+if __name__ == "__main__":
+    from data_loader import MeetingDataLoader
+    from calculator import MeetingMetricsCalculator
+    from analyzer import MeetingDataAnalyzer
+
+    # 加载数据
+    loader = MeetingDataLoader()
+    loader.load_all_data()
+
+    # 获取数据
+    baseline = loader.get_baseline_data()
+    current = loader.get_recent_weeks_data(4)
+
+    # 创建计算器和分析器
+    calculator = MeetingMetricsCalculator(baseline, current)
+    analyzer = MeetingDataAnalyzer(loader.all_data)
+
+    # 生成仪表盘
+    generator = InteractiveDashboardGenerator(loader, calculator, analyzer)
+    generator.generate_html()
+
+    print("\n✅ 交互式仪表盘生成完成!")

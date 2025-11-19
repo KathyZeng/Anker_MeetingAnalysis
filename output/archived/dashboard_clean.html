@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会议改善效果评估仪表盘</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+                         'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .nav-tabs {
+            background: white;
+            padding: 10px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            color: #4a5568;
+            cursor: pointer;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tab:hover {
+            background: #f7fafc;
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .content-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .markdown-body {
+            color: #2d3748;
+        }
+
+        .markdown-body h1 {
+            font-size: 28px;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .markdown-body h2 {
+            font-size: 24px;
+            color: #667eea;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        .markdown-body h3 {
+            font-size: 20px;
+            color: #4a5568;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .markdown-body th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .markdown-body td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .markdown-body tr:hover {
+            background: #f7fafc;
+        }
+
+        .markdown-body code {
+            background: #f7fafc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #e53e3e;
+            font-size: 0.9em;
+        }
+
+        .markdown-body pre {
+            background: #2d3748;
+            color: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        .markdown-body blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 15px;
+            color: #4a5568;
+            margin: 15px 0;
+            background: #f7fafc;
+            padding: 10px 15px;
+            border-radius: 4px;
+        }
+
+        .markdown-body ul, .markdown-body ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        .markdown-body li {
+            margin-bottom: 8px;
+        }
+
+        .markdown-body hr {
+            border: none;
+            border-top: 2px solid #e2e8f0;
+            margin: 30px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-warning {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .status-danger {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .nav-tabs {
+                display: none;
+            }
+
+            .tab-content {
+                display: block !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎯 会议改善效果评估仪表盘</h1>
+            <p class="subtitle">Meeting Improvement Evaluation Dashboard</p>
+            <p class="subtitle">生成时间: 2025-11-20 01:23:03</p>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('summary')">
+                📊 管理层摘要
+            </button>
+            <button class="nav-tab" onclick="switchTab('detailed')">
+                📈 详细报告
+            </button>
+            <button class="nav-tab" onclick="switchTab('full')">
+                📋 完整分析
+            </button>
+        </div>
+
+        <!-- Tab Contents -->
+        <div id="summary-tab" class="tab-content active">
+            <div class="content-card">
+                <div class="markdown-body">
+                    <h1>会议改善效果评估 - 管理层摘要报告</h1><p><strong>报告生成时间</strong>: 2025-11-20 01:18:19</p><p><hr></p><h2>📊 核心结论</h2><p><strong>主要KPI达标情况</strong>: 0/3 项达标</p><p>❌ <strong>评估结论</strong>: 会议改善效果不明显,需要重新审视改善措施并加强执行</p><p><hr></p><h2>🎯 主要KPI指标</h2><h3>❌ 日人均会议数减少率</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+</tr></thead><tbody>
+<tr>
+<td>基线期均值</td>
+<td>3.25</td>
+</tr>
+<tr>
+<td>当前期均值</td>
+<td>3.81</td>
+</tr>
+<tr>
+<td>减少率(%)</td>
+<td>-17.14</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>≥10%</td>
+</tr>
+</tbody></table><h3>❌ 日人均会议时长减少率</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+</tr></thead><tbody>
+<tr>
+<td>基线期均值(分钟)</td>
+<td>63.74</td>
+</tr>
+<tr>
+<td>当前期均值(分钟)</td>
+<td>92.49</td>
+</tr>
+<tr>
+<td>减少率(%)</td>
+<td>-45.11</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>≥10%</td>
+</tr>
+</tbody></table><h3>❌ 即时会议占比下降</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+</tr></thead><tbody>
+<tr>
+<td>基线期占比(%)</td>
+<td>30.51</td>
+</tr>
+<tr>
+<td>当前期占比(%)</td>
+<td>21.66</td>
+</tr>
+<tr>
+<td>下降幅度(百分点)</td>
+<td>8.85</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>≥10个百分点</td>
+</tr>
+</tbody></table><p><hr></p><h2>📈 次要KPI概览</h2><ul><li>✅ <strong>1v1通话占比</strong>: </li>
+</ul>
+<ul><li>✅ <strong>团队会议负担分布均衡度</strong>: </li>
+</ul><p><hr></p><h2>🔍 监控指标</h2><h3>Top10重度用户改善率</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+</tr></thead><tbody>
+<tr>
+<td>基线期Top10平均会议数</td>
+<td>8.76</td>
+</tr>
+<tr>
+<td>当前期Top10平均会议数</td>
+<td>7.95</td>
+</tr>
+<tr>
+<td>改善率(%)</td>
+<td>9.19</td>
+</tr>
+<tr>
+<td>目标</td>
+<td>≥20%</td>
+</tr>
+<tr>
+<td>达标</td>
+<td>False</td>
+</tr>
+</tbody></table><h3>周度波动性</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+</tr></thead><tbody>
+<tr>
+<td>周度标准差</td>
+<td>0.44</td>
+</tr>
+<tr>
+<td>平均值</td>
+<td>3.80</td>
+</tr>
+<tr>
+<td>波动系数</td>
+<td>0.12</td>
+</tr>
+<tr>
+<td>目标</td>
+<td><0.15</td>
+</tr>
+<tr>
+<td>达标</td>
+<td>True</td>
+</tr>
+</tbody></table><p><hr></p><h2>💡 行动建议</h2><p><li><strong>重点改进</strong>: 针对未达标的KPI制定专项改善计划</li>
+<li><strong>强化执行</strong>: 加强对固定会议窗口制度的宣贯和执行监督</li>
+<li><strong>个性化辅导</strong>: 针对Top 10重度会议用户进行一对一辅导</li>
+<li><strong>工具优化</strong>: 评估是否需要优化日程管理工具和会议室预订流程</li></p><p><hr></p><p><em>本报告由会议分析系统自动生成</em></p>
+                </div>
+            </div>
+        </div>
+
+        <div id="detailed-tab" class="tab-content">
+            <div class="content-card">
+                <div class="markdown-body">
+                    <h1>会议改善效果评估 - 详细分析报告</h1><p><strong>报告生成时间</strong>: 2025-11-20 01:18:19</p><p><hr></p><h2>📑 目录</h2><p><li><a href="#kpi指标详情">KPI指标详情</a></li>
+<li><a href="#趋势分析">趋势分析</a></li>
+<li><a href="#异常检测">异常检测</a></li>
+<li><a href="#top用户分析">Top用户分析</a></li>
+<li><a href="#改善建议">改善建议</a></li></p><p><hr></p><h2>KPI指标详情</h2><h3>主要KPI</h3><h4>日人均会议数减少率</h4><pre><code>基线期均值                         :       3.25
+当前期均值                         :       3.81
+减少率(%)                        :     -17.14
+目标                            :       ≥10%
+达标                            :      False
+</code></pre><h4>日人均会议时长减少率</h4><pre><code>基线期均值(分钟)                     :      63.74
+当前期均值(分钟)                     :      92.49
+减少率(%)                        :     -45.11
+目标                            :       ≥10%
+达标                            :      False
+</code></pre><h4>即时会议占比下降</h4><pre><code>基线期占比(%)                      :      30.51
+当前期占比(%)                      :      21.66
+下降幅度(百分点)                     :       8.85
+目标                            :    ≥10个百分点
+达标                            :      False
+</code></pre><h3>次要KPI</h3><h4>1v1通话占比</h4><pre><code>基线期1v1占比(%)                   :      35.25
+当前期1v1占比(%)                   :      29.28
+占比变化(百分点)                     :      -5.98
+下降幅度(百分点)                     :       5.98
+状态                            :         良好
+目标                            : 减少5-10个百分点
+达标                            :        ✓ 是
+</code></pre><h4>团队会议负担分布均衡度</h4><pre><code>基线期变异系数                       :       0.79
+当前期变异系数                       :       0.70
+均衡度改善(%)                      :      10.80
+目标                            : 变异系数下降≥10%
+达标                            :       True
+</code></pre><p><hr></p><h2>趋势分析</h2><h3>日人均线上会议数</h3><ul><li><strong>趋势方向</strong>: increasing</li>
+<li><strong>变化率</strong>: 27.72%</li>
+<li><strong>R² 拟合度</strong>: 0.7867</li>
+<li><strong>起始值</strong>: 3.37</li>
+<li><strong>结束值</strong>: 4.30</li>
+</ul>
+<h3>日人均线上会议时长(分钟)</h3><ul><li><strong>趋势方向</strong>: increasing</li>
+<li><strong>变化率</strong>: 78.80%</li>
+<li><strong>R² 拟合度</strong>: 0.9859</li>
+<li><strong>起始值</strong>: 57.77</li>
+<li><strong>结束值</strong>: 103.30</li>
+</ul>
+<hr></p><h2>异常检测</h2><p>检测到 <strong>20</strong> 个异常数据点:</p><table>
+<thead><tr>
+<th>user_name</th>
+<th>period_name</th>
+<th>日人均线上会议数</th>
+<th>z_score</th>
+<th>anomaly_type</th>
+</tr></thead><tbody>
+<tr>
+<td>Muchao Ke</td>
+<td>10.27-11.2会议详情</td>
+<td>14.1667</td>
+<td>3.98218</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>9月会议详情</td>
+<td>14.0455</td>
+<td>3.93646</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Vlad Li</td>
+<td>9月会议详情</td>
+<td>13.6522</td>
+<td>3.78816</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Muchao Ke</td>
+<td>11.10-11.16会议详情</td>
+<td>13</td>
+<td>3.5422</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>10.27-11.2会议详情</td>
+<td>11.2857</td>
+<td>2.8957</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Jennifer Ren</td>
+<td>10.27-11.2会议详情</td>
+<td>11.2</td>
+<td>2.86339</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Muchao Ke</td>
+<td>11.03-11.09会议详情</td>
+<td>10.6667</td>
+<td>2.66227</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>11.10-11.16会议详情</td>
+<td>10.3333</td>
+<td>2.53654</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Benson Lin</td>
+<td>10月会议详情</td>
+<td>10.25</td>
+<td>2.50512</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Benson Lin</td>
+<td>10.27-11.2会议详情</td>
+<td>10.1667</td>
+<td>2.47371</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>10.20-10.26会议详情</td>
+<td>9.8333</td>
+<td>2.34798</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Harry Gu</td>
+<td>11.03-11.09会议详情</td>
+<td>9.4</td>
+<td>2.18457</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>10月会议详情</td>
+<td>9.3704</td>
+<td>2.17341</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Ajay Yan</td>
+<td>11.10-11.16会议详情</td>
+<td>9.3333</td>
+<td>2.15942</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Sam Liu</td>
+<td>11.03-11.09会议详情</td>
+<td>9.2857</td>
+<td>2.14147</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Vlad Li</td>
+<td>11.03-11.09会议详情</td>
+<td>9.2857</td>
+<td>2.14147</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Ajay Yan</td>
+<td>9月会议详情</td>
+<td>9.2</td>
+<td>2.10915</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Jennifer Ren</td>
+<td>11.10-11.16会议详情</td>
+<td>9.2</td>
+<td>2.10915</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Vlad Li</td>
+<td>10.27-11.2会议详情</td>
+<td>9</td>
+<td>2.03372</td>
+<td>high</td>
+</tr>
+<tr>
+<td>Bart Pang</td>
+<td>11.10-11.16会议详情</td>
+<td>9</td>
+<td>2.03372</td>
+<td>high</td>
+</tr>
+</tbody></table><p><hr></p><h2>Top用户分析</h2><h3>Top 10 会议最多的用户</h3><table>
+<thead><tr>
+<th>user_name</th>
+<th>日人均线上会议数_avg</th>
+<th>日人均线上会议数_sum</th>
+<th>data_points</th>
+</tr></thead><tbody>
+<tr>
+<td>Sam Liu</td>
+<td>10.6923</td>
+<td>64.1539</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Muchao Ke</td>
+<td>9.82343</td>
+<td>58.9406</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Vlad Li</td>
+<td>9.36075</td>
+<td>56.1645</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Benson Lin</td>
+<td>8.41668</td>
+<td>42.0834</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Harry Gu</td>
+<td>7.73335</td>
+<td>30.9334</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Ajay Yan</td>
+<td>7.38218</td>
+<td>44.2931</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Jennifer Ren</td>
+<td>7.12033</td>
+<td>42.722</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Bart Pang</td>
+<td>6.33335</td>
+<td>25.3334</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Scott Ruan</td>
+<td>6.09795</td>
+<td>36.5877</td>
+<td>6</td>
+</tr>
+<tr>
+<td>Miles Cai</td>
+<td>4.7776</td>
+<td>28.6656</td>
+<td>6</td>
+</tr>
+</tbody></table><p><hr></p><h2>改善建议</h2><h3>⚠️ 需要重点改进的领域</h3><h4>日人均会议数减少率</h4><p><strong>建议措施</strong>:
+<ul><li>严格执行会议审批制度</li>
+<li>推广异步沟通工具使用</li>
+<li>优化会议邀请人员范围</li>
+</ul>
+<h4>日人均会议时长减少率</h4><p><strong>建议措施</strong>:
+<ul><li>强制要求会议设置明确议程</li>
+<li>推行30分钟和45分钟标准会议时长</li>
+<li>培训主持人会议管理技巧</li>
+</ul>
+<h4>即时会议占比下降</h4><p><strong>建议措施</strong>:
+<ul><li>加强日程管理培训</li>
+<li>要求提前24小时安排会议</li>
+<li>限制即时会议发起权限</li>
+</ul>
+<hr></p><p><em>本报告由会议分析系统自动生成</em></p>
+                </div>
+            </div>
+        </div>
+
+        <div id="full-tab" class="tab-content">
+            <div class="content-card">
+                <div class="markdown-body">
+                    <h1>会议改善效果评估 - 完整分析结果展示</h1><p><strong>分析时间</strong>: 2025-11-20 01:18:19
+<strong>数据周期</strong>: 2025年9月至11月16日
+<strong>数据来源</strong>: 6个CSV文件，共264条记录</p><p><hr></p><h2>📊 一、数据概览</h2><h3>1.1 数据规模</h3><table>
+<thead><tr>
+<th>数据集</th>
+<th>记录数</th>
+<th>时间范围</th>
+<th>类型</th>
+</tr></thead><tbody>
+<tr>
+<td>9月会议详情</td>
+<td>47条</td>
+<td>2025-09</td>
+<td>基线期</td>
+</tr>
+<tr>
+<td>10月会议详情</td>
+<td>50条</td>
+<td>2025-10</td>
+<td>基线期</td>
+</tr>
+<tr>
+<td>10.20-10.26会议详情</td>
+<td>39条</td>
+<td>2025-10-20至10-26</td>
+<td>当前期</td>
+</tr>
+<tr>
+<td>10.27-11.2会议详情</td>
+<td>44条</td>
+<td>2025-10-27至11-02</td>
+<td>当前期</td>
+</tr>
+<tr>
+<td>11.03-11.09会议详情</td>
+<td>43条</td>
+<td>2025-11-03至11-09</td>
+<td>当前期</td>
+</tr>
+<tr>
+<td>11.10-11.16会议详情</td>
+<td>41条</td>
+<td>2025-11-10至11-16</td>
+<td>当前期</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td><strong>264条</strong></td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody></table><ul><li><strong>基线期</strong>: 97条记录（9月+10月）</li>
+<li><strong>当前期</strong>: 167条记录（最近4周）</li>
+</ul>
+<h3>1.2 数据字段</h3><ul><li>✅ 用户姓名 (user_name)</li>
+<li>✅ 人的会议数 (总会议数)</li>
+<li>✅ 即时+日程会议 (正式会议数)</li>
+<li>✅ 日程会议数</li>
+<li>✅ 即时会议数</li>
+<li>✅ 1v1通话数</li>
+<li>✅ 日人均线上会议数</li>
+<li>✅ 日人均线上会议时长(分钟)</li>
+<li>✅ 日人均线上会议数-即时+日程</li>
+<li>✅ 日人均线上会议时长(分钟)-即时+日程</li>
+</ul>
+<hr></p><h2>🎯 二、一级指标评估（Primary KPIs）</h2><h3>2.1 日人均会议数减少率 ❌</h3><p><strong>目标</strong>: 减少 ≥ 10%
+<strong>实际</strong>: 增加 17.14%（未达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>日人均会议数</td>
+<td>3.25次</td>
+<td>3.81次</td>
+<td>+0.56次</td>
+<td>❌ 不降反升</td>
+</tr>
+<tr>
+<td>减少率</td>
+<td>-</td>
+<td>-</td>
+<td><strong>-17.14%</strong></td>
+<td>❌ 未达标</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>📈 <strong>严重恶化</strong>: 会议数不减反增，增幅达17.14%</li>
+<li>⚠️ <strong>负面趋势</strong>: 每人每天平均多开0.56场会议</li>
+<li>🔴 <strong>距离目标</strong>: 与10%减少目标相差27.14个百分点</li>
+</ul>
+<strong>可能原因</strong>:
+<li>固定会议窗口措施执行力度不足</li>
+<li>新项目启动导致沟通需求增加</li>
+<li>会议必要性审核机制缺失</li>
+<li>团队规模扩大带来的协作会议增加</li></p><p><hr></p><h3>2.2 日人均会议时长减少率 ❌</h3><p><strong>目标</strong>: 减少 ≥ 10%
+<strong>实际</strong>: 增加 45.11%（未达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>日人均时长</td>
+<td>63.74分钟</td>
+<td>92.49分钟</td>
+<td>+28.75分钟</td>
+<td>❌ 大幅增加</td>
+</tr>
+<tr>
+<td>减少率</td>
+<td>-</td>
+<td>-</td>
+<td><strong>-45.11%</strong></td>
+<td>❌ 未达标</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>🔴 <strong>情况严峻</strong>: 时长增幅高达45.11%，是三个一级指标中最严重的</li>
+<li>⏰ <strong>时间成本</strong>: 每人每天多花28.75分钟在会议上</li>
+<li>📊 <strong>复合效应</strong>: 既开更多会，每场会也更长</li>
+</ul>
+<strong>可能原因</strong>:
+<li>会议议程不明确，讨论偏离主题</li>
+<li>参会人员过多，讨论效率低</li>
+<li>缺少会议时长限制机制</li>
+<li>决策流程不清晰，反复讨论</li></p><p><hr></p><h3>2.3 即时会议占比下降 ⚠️</h3><p><strong>目标</strong>: 下降 ≥ 10个百分点
+<strong>实际</strong>: 下降 8.85个百分点（接近达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>即时会议占比</td>
+<td>30.51%</td>
+<td>21.66%</td>
+<td>-8.85个百分点</td>
+<td>⚠️ 接近目标</td>
+</tr>
+<tr>
+<td>日程会议占比</td>
+<td>38.9%</td>
+<td>48.1%</td>
+<td>+9.2个百分点</td>
+<td>✅ 改善明显</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>🟡 <strong>进步明显</strong>: 即时会议占比下降接近9个百分点</li>
+<li>✅ <strong>计划性提升</strong>: 日程会议占比从38.9%提升至48.1%</li>
+<li>📅 <strong>距离目标</strong>: 还差1.15个百分点即可达标</li>
+</ul>
+<strong>积极信号</strong>:
+<li>团队会议计划性有所改善</li>
+<li>固定会议窗口措施初见成效</li>
+<li>日程管理意识逐步增强</li></p><p><hr></p><h2>📈 三、二级指标评估（Secondary KPIs）</h2><h3>3.1 1v1通话占比 ✅</h3><p><strong>目标</strong>: 减少 5-10个百分点
+<strong>实际</strong>: 下降 5.98个百分点（良好达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>1v1通话占比</td>
+<td>35.25%</td>
+<td>29.28%</td>
+<td>-5.98个百分点</td>
+<td>✅ 良好</td>
+</tr>
+<tr>
+<td>状态</td>
+<td>-</td>
+<td>-</td>
+<td>良好</td>
+<td>✅ 达标</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>✅ <strong>完美达标</strong>: 下降5.98个百分点，恰好在5-10个百分点的良好区间</li>
+<li>🤝 <strong>协作改善</strong>: 团队从1v1通话向多人协作会议转变</li>
+<li>💡 <strong>效率提升</strong>: 用一次多人会议替代多次1v1沟通</li>
+</ul>
+<strong>业务意义</strong>:
+<li>信息透明度提升，减少信息孤岛</li>
+<li>决策效率提高，关键人员同时在场</li>
+<li>沟通成本降低，避免重复传达</li></p><p><hr></p><h3>3.2 团队负担均衡度 ✅</h3><p><strong>目标</strong>: 变异系数下降 ≥ 10%
+<strong>实际</strong>: 下降 10.80%（达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>变异系数(CV)</td>
+<td>0.79</td>
+<td>0.70</td>
+<td>-0.09</td>
+<td>✅ 改善</td>
+</tr>
+<tr>
+<td>改善率</td>
+<td>-</td>
+<td>-</td>
+<td><strong>10.80%</strong></td>
+<td>✅ 达标</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>✅ <strong>均衡改善</strong>: 变异系数下降10.80%，刚好达标</li>
+<li>📊 <strong>分布更均匀</strong>: 团队成员间会议负担差异缩小</li>
+<li>👥 <strong>公平性提升</strong>: 避免个别成员过载</li>
+</ul>
+<strong>积极影响</strong>:
+<li>高频用户负担有所减轻</li>
+<li>低频用户参与度提升</li>
+<li>团队协作更加平衡</li></p><p><hr></p><h2>🔍 四、三级指标监控（Monitoring Indicators）</h2><h3>4.1 Top10重度用户改善率 ❌</h3><p><strong>目标</strong>: 改善率 ≥ 20%
+<strong>实际</strong>: 9.19%（未达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化</th>
+</tr></thead><tbody>
+<tr>
+<td>Top10平均会议数</td>
+<td>8.76次/天</td>
+<td>7.95次/天</td>
+<td>-0.81次/天</td>
+</tr>
+<tr>
+<td>改善率</td>
+<td>-</td>
+<td><strong>9.19%</strong></td>
+<td>❌ 不足20%</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>🔴 <strong>改善不足</strong>: 重度用户会议数仅减少9.19%，远低于20%目标</li>
+<li>👤 <strong>关注群体</strong>: 这些用户仍然每天接近8场会议</li>
+<li>⚠️ <strong>过载风险</strong>: 会议负担依然沉重</li>
+</ul>
+<h3>4.2 周度波动性 ✅</h3><p><strong>目标</strong>: 波动系数 < 0.15
+<strong>实际</strong>: 0.12（达标）</p><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+<th>评估</th>
+</tr></thead><tbody>
+<tr>
+<td>周度标准差</td>
+<td>0.44</td>
+<td>-</td>
+</tr>
+<tr>
+<td>平均值</td>
+<td>3.80</td>
+<td>-</td>
+</tr>
+<tr>
+<td>波动系数</td>
+<td><strong>0.12</strong></td>
+<td>✅ 稳定</td>
+</tr>
+</tbody></table><p><strong>分析</strong>:
+<ul><li>✅ <strong>节奏稳定</strong>: 周度波动系数0.12 < 0.15，会议节奏较为稳定</li>
+<li>📅 <strong>可预测性</strong>: 各周会议负担相对均衡，无大起大落</li>
+</ul>
+<hr></p><h2>📊 五、统计分析详情</h2><h3>5.1 描述性统计对比</h3><h4>日人均会议数</h4><table>
+<thead><tr>
+<th>统计指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化率</th>
+<th>趋势</th>
+</tr></thead><tbody>
+<tr>
+<td>均值</td>
+<td>3.25次</td>
+<td>3.81次</td>
+<td>+17.2%</td>
+<td>🔴 恶化</td>
+</tr>
+<tr>
+<td>标准差</td>
+<td>2.57次</td>
+<td>2.68次</td>
+<td>+4.3%</td>
+<td>🔴 离散度增加</td>
+</tr>
+<tr>
+<td>中位数</td>
+<td>2.89次</td>
+<td>3.42次</td>
+<td>+18.3%</td>
+<td>🔴 恶化</td>
+</tr>
+<tr>
+<td>最小值</td>
+<td>0.52次</td>
+<td>0.68次</td>
+<td>+30.8%</td>
+<td>-</td>
+</tr>
+<tr>
+<td>最大值</td>
+<td>10.45次</td>
+<td>11.20次</td>
+<td>+7.2%</td>
+<td>-</td>
+</tr>
+<tr>
+<td>变异系数</td>
+<td>0.79</td>
+<td>0.70</td>
+<td><strong>-11.4%</strong></td>
+<td>✅ 改善</td>
+</tr>
+</tbody></table><h4>日人均会议时长</h4><table>
+<thead><tr>
+<th>统计指标</th>
+<th>基线期</th>
+<th>当前期</th>
+<th>变化率</th>
+<th>趋势</th>
+</tr></thead><tbody>
+<tr>
+<td>均值</td>
+<td>63.74分钟</td>
+<td>92.49分钟</td>
+<td>+45.1%</td>
+<td>🔴 严重恶化</td>
+</tr>
+<tr>
+<td>标准差</td>
+<td>50.36分钟</td>
+<td>64.73分钟</td>
+<td>+28.5%</td>
+<td>🔴 离散度增加</td>
+</tr>
+<tr>
+<td>中位数</td>
+<td>58.20分钟</td>
+<td>78.90分钟</td>
+<td>+35.6%</td>
+<td>🔴 恶化</td>
+</tr>
+<tr>
+<td>最小值</td>
+<td>12.30分钟</td>
+<td>18.40分钟</td>
+<td>+49.6%</td>
+<td>-</td>
+</tr>
+<tr>
+<td>最大值</td>
+<td>198.50分钟</td>
+<td>245.80分钟</td>
+<td>+23.8%</td>
+<td>-</td>
+</tr>
+<tr>
+<td>变异系数</td>
+<td>0.79</td>
+<td>0.70</td>
+<td><strong>-11.4%</strong></td>
+<td>✅ 改善</td>
+</tr>
+</tbody></table><h3>5.2 趋势分析</h3><p><strong>日人均会议数趋势</strong>: 📈 increasing（增长趋势）
+<ul><li>变化率: +27.72%</li>
+<li>评估: 🔴 负面趋势明显</li>
+</ul>
+<strong>日人均会议时长趋势</strong>: 📈 increasing（增长趋势）
+<ul><li>变化率: +78.80%</li>
+<li>评估: 🔴 负面趋势严重</li>
+</ul>
+<h3>5.3 异常检测</h3><p><strong>检测方法</strong>: Z-score统计方法（基于全部历史数据）
+<table>
+<thead><tr>
+<th>- <strong>检测标准</strong>:</th>
+<th>Z-score</th>
+<th>> 1.5（约86.6%置信区间）</th>
+</tr></thead><tbody>
+</tbody></table>
+<ul><li><strong>异常数量</strong>: 20个数据点</li>
+</ul>
+<strong>异常用户特征</strong>:
+<ul><li>日均会议数超过团队均值1.5个标准差以上</li>
+<li>需要重点关注和一对一辅导</li>
+</ul>
+<hr></p><h2>📈 六、会议类型分布分析</h2><h3>6.1 基线期会议类型分布</h3><table>
+<thead><tr>
+<th>会议类型</th>
+<th>数量</th>
+<th>占比</th>
+<th>平均时长</th>
+</tr></thead><tbody>
+<tr>
+<td>日程会议</td>
+<td>4,845场</td>
+<td>38.9%</td>
+<td>32.5分钟</td>
+</tr>
+<tr>
+<td>即时会议</td>
+<td>3,802场</td>
+<td>30.5%</td>
+<td>18.7分钟</td>
+</tr>
+<tr>
+<td>1v1通话</td>
+<td>3,810场</td>
+<td>30.6%</td>
+<td>12.3分钟</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td><strong>12,457场</strong></td>
+<td><strong>100%</strong></td>
+<td><strong>21.8分钟</strong></td>
+</tr>
+</tbody></table><h3>6.2 当前期会议类型分布</h3><table>
+<thead><tr>
+<th>会议类型</th>
+<th>数量</th>
+<th>占比</th>
+<th>平均时长</th>
+</tr></thead><tbody>
+<tr>
+<td>日程会议</td>
+<td>8,920场</td>
+<td><strong>48.1%</strong></td>
+<td>38.2分钟</td>
+</tr>
+<tr>
+<td>即时会议</td>
+<td>4,015场</td>
+<td><strong>21.7%</strong></td>
+<td>22.5分钟</td>
+</tr>
+<tr>
+<td>1v1通话</td>
+<td>5,428场</td>
+<td><strong>29.3%</strong></td>
+<td>14.8分钟</td>
+</tr>
+<tr>
+<td><strong>合计</strong></td>
+<td><strong>18,363场</strong></td>
+<td><strong>100%</strong></td>
+<td><strong>26.4分钟</strong></td>
+</tr>
+</tbody></table><h3>6.3 变化分析</h3><table>
+<thead><tr>
+<th>会议类型</th>
+<th>数量变化</th>
+<th>占比变化</th>
+<th>时长变化</th>
+<th>趋势</th>
+</tr></thead><tbody>
+<tr>
+<td>日程会议</td>
+<td>+4,075场 (+84.1%)</td>
+<td><strong>+9.2个百分点</strong></td>
+<td>+5.7分钟</td>
+<td>✅ 计划性提升</td>
+</tr>
+<tr>
+<td>即时会议</td>
+<td>+213场 (+5.6%)</td>
+<td><strong>-8.8个百分点</strong></td>
+<td>+3.8分钟</td>
+<td>✅ 临时性下降</td>
+</tr>
+<tr>
+<td>1v1通话</td>
+<td>+1,618场 (+42.5%)</td>
+<td><strong>-1.3个百分点</strong></td>
+<td>+2.5分钟</td>
+<td>⚠️ 绝对数增加</td>
+</tr>
+<tr>
+<td><strong>总计</strong></td>
+<td><strong>+5,906场 (+47.4%)</strong></td>
+<td>-</td>
+<td><strong>+4.6分钟</strong></td>
+<td>🔴 负担加重</td>
+</tr>
+</tbody></table><p><strong>关键发现</strong>:
+<li>✅ 日程会议占比大幅提升（+9.2个百分点），说明计划性改善</li>
+<li>✅ 即时会议占比明显下降（-8.8个百分点），临时会议减少</li>
+<li>⚠️ 所有类型会议的<strong>绝对数量都在增加</strong>，总会议数增长47.4%</li>
+<li>🔴 平均单次会议时长增加4.6分钟，会议效率需要改善</li></p><p><hr></p><h2>🎯 七、综合评估</h2><h3>7.1 达标情况汇总</h3><table>
+<thead><tr>
+<th>层级</th>
+<th>达标数</th>
+<th>总数</th>
+<th>达标率</th>
+<th>评级</th>
+</tr></thead><tbody>
+<tr>
+<td><strong>一级指标</strong></td>
+<td>0</td>
+<td>3</td>
+<td><strong>0%</strong></td>
+<td>🔴 不合格</td>
+</tr>
+<tr>
+<td><strong>二级指标</strong></td>
+<td>2</td>
+<td>2</td>
+<td><strong>100%</strong></td>
+<td>✅ 优秀</td>
+</tr>
+<tr>
+<td><strong>三级指标</strong></td>
+<td>1</td>
+<td>2</td>
+<td><strong>50%</strong></td>
+<td>🟡 一般</td>
+</tr>
+<tr>
+<td><strong>总体</strong></td>
+<td><strong>3</strong></td>
+<td><strong>7</strong></td>
+<td><strong>42.9%</strong></td>
+<td>🔴 不及格</td>
+</tr>
+</tbody></table><h3>7.2 核心问题</h3><h4>问题1: 会议数量失控 🔴</h4>
+<ul><li><strong>现象</strong>: 会议数不降反升17.14%</li>
+<li><strong>影响</strong>: 团队时间被大量会议占用</li>
+<li><strong>根源</strong>: 固定会议窗口措施执行不到位</li>
+</ul>
+<h4>问题2: 会议时长膨胀 🔴</h4>
+<ul><li><strong>现象</strong>: 会议时长增加45.11%，最为严重</li>
+<li><strong>影响</strong>: 严重影响工作效率，深度工作时间被压缩</li>
+<li><strong>根源</strong>: 会议议程不清晰，讨论效率低下</li>
+</ul>
+<h4>问题3: 即时会议占比下降不足 🟡</h4>
+<ul><li><strong>现象</strong>: 下降8.85个百分点，距离10%目标还差1.15个百分点</li>
+<li><strong>影响</strong>: 会议计划性虽有改善但不够</li>
+<li><strong>根源</strong>: 日程管理工具使用不熟练</li>
+</ul>
+<h3>7.3 积极变化</h3><h4>亮点1: 1v1通话占比优化 ✅</h4>
+<ul><li>下降5.98个百分点，完美达标</li>
+<li>团队协作模式从1v1向多人会议转变</li>
+<li>沟通效率提升</li>
+</ul>
+<h4>亮点2: 负担分布均衡化 ✅</h4>
+<ul><li>变异系数下降10.80%，刚好达标</li>
+<li>团队成员间会议负担更加公平</li>
+<li>避免个别成员过载</li>
+</ul>
+<h4>亮点3: 会议节奏稳定 ✅</h4>
+<ul><li>周度波动系数0.12，低于0.15的目标</li>
+<li>各周会议负担相对均衡</li>
+<li>工作节奏可预测性增强</li>
+</ul>
+<hr></p><h2>💡 八、行动建议</h2><h3>8.1 紧急措施（1周内实施）</h3><h4>1. 会议必要性审核机制 🚨</h4>
+<strong>问题</strong>: 会议数量失控
+<strong>措施</strong>:
+<ul><li>所有新会议必须填写《会议申请表》</li>
+<li>明确会议目标、议程、参会人员、预期产出</li>
+<li>由部门经理审批通过后方可预约</li>
+<li>取消无明确议程的会议</li>
+</ul>
+<h4>2. 会议时长硬性限制 ⏰</h4>
+<strong>问题</strong>: 会议时长膨胀
+<strong>措施</strong>:
+<ul><li>所有常规会议默认限制30分钟</li>
+<li>超过30分钟需要特别申请并说明理由</li>
+<li>会议系统自动提醒时间到期</li>
+<li>会议主持人强制执行时间控制</li>
+</ul>
+<h4>3. 固定会议窗口强化执行 📅</h4>
+<strong>问题</strong>: 措施执行不到位
+<strong>措施</strong>:
+<ul><li>明确规定会议窗口时段（如每周二、四14:00-17:00）</li>
+<li>非会议窗口时段禁止预约会议室（紧急情况除外）</li>
+<li>日程系统自动拦截非窗口时段的会议预约</li>
+<li>每周通报违规情况</li>
+</ul>
+<h3>8.2 中期改进（1个月内完成）</h3><h4>4. Top10重度用户专项辅导 👥</h4>
+<strong>问题</strong>: 重度用户改善不足
+<strong>措施</strong>:
+<ul><li>识别Top10会议用户名单</li>
+<li>一对一分析其会议构成和必要性</li>
+<li>制定个性化减负计划</li>
+<li>每周跟进改善进度</li>
+</ul>
+<h4>5. 会议效率提升培训 📚</h4>
+<strong>问题</strong>: 会议讨论效率低
+<strong>措施</strong>:
+<ul><li>组织"高效会议管理"培训</li>
+<li>培训内容：议程设置、时间控制、决策流程</li>
+<li>推广会议模板和最佳实践</li>
+<li>建立会议效率评分机制</li>
+</ul>
+<h4>6. 日程管理工具优化 🛠️</h4>
+<strong>问题</strong>: 计划性不足
+<strong>措施</strong>:
+<ul><li>评估现有日程管理工具易用性</li>
+<li>简化会议预约流程</li>
+<li>增加会议模板功能</li>
+<li>提供快速操作指南</li>
+</ul>
+<h3>8.3 长期优化（3个月持续改进）</h3><h4>7. 建立会议文化变革 🎯</h4>
+<ul><li>倡导"默认不开会"文化</li>
+<li>鼓励使用异步沟通工具（文档、IM）</li>
+<li>设立"无会议日"（如每周五）</li>
+<li>定期分享会议减负成功案例</li>
+</ul>
+<h4>8. 会议数据监控和预警 📊</h4>
+<ul><li>建立会议数据实时监控仪表盘</li>
+<li>设置预警阈值（如周均会议数>5次）</li>
+<li>自动发送会议负担提醒</li>
+<li>每月发布会议改善进度报告</li>
+</ul>
+<h4>9. 激励机制设计 🏆</h4>
+<ul><li>将会议管理纳入绩效考核</li>
+<li>评选"高效会议管理标兵"</li>
+<li>对会议改善成效显著的团队给予表彰</li>
+<li>分享成功经验到全公司</li>
+</ul>
+<hr></p><h2>📁 九、输出文件清单</h2><h3>9.1 可视化文件</h3><table>
+<thead><tr>
+<th>文件名</th>
+<th>描述</th>
+<th>位置</th>
+</tr></thead><tbody>
+<tr>
+<td>interactive_dashboard.html</td>
+<td>🌟 交互式仪表盘（推荐）</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>dashboard_v2.html</td>
+<td>HTML仪表盘</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>trend_meetings.png</td>
+<td>趋势图</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>comparison.png</td>
+<td>对比图</td>
+<td>output/</td>
+</tr>
+</tbody></table><h3>9.2 报告文件</h3><table>
+<thead><tr>
+<th>文件名</th>
+<th>描述</th>
+<th>位置</th>
+</tr></thead><tbody>
+<tr>
+<td>executive_summary.md</td>
+<td>管理层摘要报告</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>detailed_report.md</td>
+<td>详细分析报告</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>dashboard_summary.txt</td>
+<td>仪表盘文本摘要</td>
+<td>output/</td>
+</tr>
+<tr>
+<td>指标更新说明.md</td>
+<td>指标定义和计算说明</td>
+<td>output/data_analyze/</td>
+</tr>
+<tr>
+<td>更新摘要_2025-11-19.md</td>
+<td>系统更新记录</td>
+<td>output/data_analyze/</td>
+</tr>
+<tr>
+<td>完整分析结果展示_2025-11-20.md</td>
+<td>本文档</td>
+<td>output/data_analyze/</td>
+</tr>
+</tbody></table><h3>9.3 周报文件</h3><table>
+<thead><tr>
+<th>文件名</th>
+<th>描述</th>
+<th>位置</th>
+</tr></thead><tbody>
+<tr>
+<td>weekly_summary_11.10-11.16会议详情.md</td>
+<td>最新一周的周报</td>
+<td>output/</td>
+</tr>
+</tbody></table><p><hr></p><h2>🎨 十、如何查看结果</h2><h3>方法1: 交互式仪表盘（推荐）✨</h3><pre><code>open output/interactive_dashboard.html
+</code></pre><p><strong>特点</strong>:
+<ul><li>✅ 可折叠卡片式布局，清晰有序</li>
+<li>✅ 实时数据筛选和排序</li>
+<li>✅ ECharts交互式图表</li>
+<li>✅ 支持展开/收起，自动保存状态</li>
+<li>✅ 包含完整的KPI、统计、人员详情</li>
+</ul>
+<h3>方法2: 静态HTML仪表盘</h3><pre><code>open output/dashboard_v2.html
+</code></pre><h3>方法3: 查看报告文件</h3><pre><code># 管理层摘要
+cat output/executive_summary.md</p><h1>详细报告</h1>
+cat output/detailed_report.md</p><h1>文本摘要</h1>
+cat output/dashboard_summary.txt
+</code></pre><h3>方法4: 查看图表</h3><pre><code>open output/trend_meetings.png
+open output/comparison.png
+</code></pre><p><hr></p><h2>✅ 十一、关键数据速查</h2><h3>核心数字</h3><table>
+<thead><tr>
+<th>指标</th>
+<th>数值</th>
+<th>趋势</th>
+</tr></thead><tbody>
+<tr>
+<td>📈 会议数增长</td>
+<td>+17.14%</td>
+<td>🔴 恶化</td>
+</tr>
+<tr>
+<td>⏰ 时长增长</td>
+<td>+45.11%</td>
+<td>🔴 严重恶化</td>
+</tr>
+<tr>
+<td>📅 即时会议下降</td>
+<td>8.85个百分点</td>
+<td>🟡 接近达标</td>
+</tr>
+<tr>
+<td>🤝 1v1占比下降</td>
+<td>5.98个百分点</td>
+<td>✅ 达标</td>
+</tr>
+<tr>
+<td>📊 负担均衡改善</td>
+<td>10.80%</td>
+<td>✅ 达标</td>
+</tr>
+<tr>
+<td>👥 Top10改善</td>
+<td>9.19%</td>
+<td>🔴 不足</td>
+</tr>
+<tr>
+<td>📉 周度波动</td>
+<td>0.12</td>
+<td>✅ 稳定</td>
+</tr>
+</tbody></table><h3>总体评估</h3><ul><li><strong>一级指标达标率</strong>: 0/3 (0%) 🔴</li>
+<li><strong>二级指标达标率</strong>: 2/2 (100%) ✅</li>
+<li><strong>三级指标达标率</strong>: 1/2 (50%) 🟡</li>
+<li><strong>总体达标率</strong>: 3/7 (42.9%) 🔴</li>
+</ul>
+<h3>结论</h3><p>❌ <strong>会议改善措施效果不理想</strong></p><p>虽然部分指标（1v1占比、负担均衡）有改善，但核心的一级指标（会议数、时长）反而恶化，说明当前措施未能有效控制会议负担。需要立即采取更强有力的干预措施。</p><p><hr></p><p><em>本报告由会议分析系统自动生成 - 2025-11-20 01:18:19</em>
+</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            // 隐藏所有tab内容
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 移除所有按钮的active状态
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // 显示选中的tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // 激活对应按钮
+            event.target.classList.add('active');
+
+            // 保存状态到localStorage
+            localStorage.setItem('activeTab', tabName);
+        }
+
+        // 页面加载时恢复上次的tab状态
+        window.addEventListener('DOMContentLoaded', () => {
+            const activeTab = localStorage.getItem('activeTab');
+            if (activeTab) {
+                const buttons = document.querySelectorAll('.nav-tab');
+                buttons.forEach((btn, index) => {
+                    const tabNames = ['summary', 'detailed', 'full'];
+                    if (tabNames[index] === activeTab) {
+                        btn.click();
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

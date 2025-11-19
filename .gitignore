@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+.~*
+
+# Output (可选择性提交)
+# output/*.html 如果不想提交生成的HTML，可以取消注释这行
+
+# Backup
+*_backup/
+backup/
+archive/
