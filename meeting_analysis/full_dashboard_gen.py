@@ -1519,15 +1519,20 @@ tr:hover {
 
             let html = '';
             pageData.forEach(row => {
+                // 使用正确的列名映射（CSV中的列名是"即时会议"和"日程会议"，不带"数"字）
+                const instantMeetings = row['即时会议'] || row['即时会议数'] || 0;
+                const scheduledMeetings = row['日程会议'] || row['日程会议数'] || 0;
+                const calls1v1 = row['1v1通话数'] || 0;
+
                 html += `
                 <tr>
                     <td>${row.user_name || ''}</td>
                     <td>${row.period_name || ''}</td>
                     <td>${(row['日人均线上会议数'] || 0).toFixed(2)}</td>
                     <td>${(row['日人均线上会议时长(分钟)'] || 0).toFixed(0)}</td>
-                    <td>${row['即时会议数'] || 0}</td>
-                    <td>${row['日程会议数'] || 0}</td>
-                    <td>${row['1v1通话数'] || 0}</td>
+                    <td>${instantMeetings}</td>
+                    <td>${scheduledMeetings}</td>
+                    <td>${calls1v1}</td>
                     <td><button class="btn-detail" onclick="showUserDetail('${row.user_name}')">详情</button></td>
                 </tr>
                 `;
@@ -1596,8 +1601,23 @@ tr:hover {
             }
 
             filteredData.sort((a, b) => {
-                let aVal = a[column];
-                let bVal = b[column];
+                let aVal, bVal;
+
+                // 特殊处理即时会议和日程会议列（需要映射列名）
+                if (column === '即时会议数') {
+                    aVal = a['即时会议'] || a['即时会议数'] || 0;
+                    bVal = b['即时会议'] || b['即时会议数'] || 0;
+                } else if (column === '日程会议数') {
+                    aVal = a['日程会议'] || a['日程会议数'] || 0;
+                    bVal = b['日程会议'] || b['日程会议数'] || 0;
+                } else {
+                    aVal = a[column];
+                    bVal = b[column];
+                }
+
+                // 处理undefined和null
+                if (aVal === undefined || aVal === null) aVal = 0;
+                if (bVal === undefined || bVal === null) bVal = 0;
 
                 if (typeof aVal === 'string') {
                     return sortOrder === 'asc' ?
