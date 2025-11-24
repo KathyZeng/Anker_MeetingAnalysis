@@ -4,9 +4,30 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
 venv/
 ENV/
+env/
+
+# Streamlit
+.streamlit/
 
 # IDE
 .vscode/
@@ -19,26 +40,25 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Output files
+output/*
+!output/.gitkeep
+
 # Logs
 *.log
+logs/
+
+# Data files (保留示例,忽略实际数据)
+input/*.csv
+!input/.gitkeep
+
+# Config (保留模板,忽略实际配置)
+config/data_config.json
+
+# Archive (历史文件不需要提交)
+archive/
 
 # Temporary files
 *.tmp
 *.bak
-.~*
-
-# Output (可选择性提交)
-# output/*.html 如果不想提交生成的HTML，可以取消注释这行
-
-# Backup
-*_backup/
-backup/
-archive/
-
-# 测试文件
-**/test_*.html
-**/test_*.py
-
-# 临时生成的HTML文件
-output/interactive_dashboard.html
-output/temp_*.html
+*.swp

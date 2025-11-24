@@ -1,0 +1,56 @@
+{
+  "version": "1.1",
+  "description": "主责人员名单配置，用于在仪表盘中单独展示主责人员的会议统计",
+  "last_updated": "2025-11-23",
+  "responsible_persons": [
+    {
+      "name": "Bart Pang",
+      "note": "主责人员"
+    },
+    {
+      "name": "Harry Gu",
+      "note": "主责人员"
+    },
+    {
+      "name": "Jennifer Ren",
+      "note": "主责人员"
+    },
+    {
+      "name": "Louiskoo Qin",
+      "note": "主责人员"
+    },
+    {
+      "name": "Muchao Ke",
+      "note": "主责人员"
+    },
+    {
+      "name": "Sam Liu",
+      "note": "主责人员"
+    },
+    {
+      "name": "Seiya Fang",
+      "note": "主责人员"
+    },
+    {
+      "name": "Vlad Li",
+      "note": "主责人员"
+    },
+    {
+      "name": "Zhipeng Lu",
+      "note": "主责人员"
+    }
+  ],
+  "_instructions": {
+    "如何使用": [
+      "1. 将上面 responsible_persons 数组中的示例人员替换为实际的主责人员姓名",
+      "2. 姓名必须与CSV文件中的user_name字段完全一致",
+      "3. 可以通过Web界面（./start_webapp.sh）方便地配置主责人员",
+      "4. 修改后重新生成仪表盘即可看到更新"
+    ],
+    "说明": "系统不会对主责人员的数据进行任何调整，只是在分析结果和人员详情页面单独展示这些人员的统计数据",
+    "示例": {
+      "name": "张三",
+      "note": "跨部门沟通和需求对接"
+    }
+  }
+}
