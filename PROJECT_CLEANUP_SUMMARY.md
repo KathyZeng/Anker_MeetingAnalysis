@@ -25,11 +25,11 @@
 - `app_backup_20251124_002114.py` - 临时备份
 - `generate_full_dashboard.py` - 旧的仪表盘生成器
 - `interactive_setup.py` - 旧的交互式配置工具
-- `meeting_analysis/` - 旧的分析模块（功能已整合到 app_v2.py）
+- `meeting_analysis/` - 旧的分析模块（功能已整合到 app.py）
 
 **保留的活跃代码**：
 
-- `app_v2.py` - 唯一活跃的主应用代码
+- `app.py` - 唯一活跃的主应用代码
 
 ### 2. 文档整理
 
@@ -73,7 +73,7 @@ regular/
 **清理后** (简洁):
 ```
 regular/
-├── app_v2.py                    # 唯一活跃代码
+├── app.py                    # 唯一活跃代码
 ├── README.md                    # 主说明文档
 ├── start.sh                     # 启动脚本
 ├── requirements.txt
@@ -110,7 +110,7 @@ regular/
 
 ### 核心文件（必需）
 
-1. **app_v2.py** - 主应用（1000+ 行）
+1. **app.py** - 主应用（1000+ 行）
 2. **README.md** - 项目说明
 3. **requirements.txt** - Python 依赖
 
@@ -148,7 +148,7 @@ regular/
 ./start.sh
 
 # 方式2: 直接运行
-python3 -m streamlit run app_v2.py --server.port 8502
+python3 -m streamlit run app.py --server.port 8502
 ```
 
 ### 查看文档
@@ -159,7 +159,7 @@ python3 -m streamlit run app_v2.py --server.port 8502
 
 ### 维护建议
 
-1. **代码修改**: 只修改 `app_v2.py`
+1. **代码修改**: 只修改 `app.py`
 2. **配置调整**: 编辑 `config/` 下的 JSON 文件
 3. **数据管理**: 通过 Web 界面上传和管理 CSV 文件
 4. **文档更新**: 更新 `docs/` 下的相关文档

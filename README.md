@@ -34,13 +34,19 @@ pip install -r requirements.txt
 
 ### 3. 启动应用
 
+**方式一：使用启动脚本（推荐）**
 ```bash
-python3 -m streamlit run app_v2.py --server.port 8502
+./start.sh
+```
+
+**方式二：直接启动**
+```bash
+streamlit run app.py
 ```
 
 ### 4. 访问应用
 
-浏览器访问: http://localhost:8502
+浏览器访问: http://localhost:8501
 
 ---
 
@@ -48,8 +54,10 @@ python3 -m streamlit run app_v2.py --server.port 8502
 
 ```
 regular/
-├── app_v2.py                    # 主应用（唯一活跃代码）
+├── app.py                       # 主应用（唯一活跃代码）
+├── start.sh                     # 启动脚本
 ├── requirements.txt             # Python 依赖
+├── Dockerfile                   # Docker 配置
 ├── README.md                    # 本文件
 │
 ├── input/                       # CSV 数据文件
@@ -103,8 +111,8 @@ regular/
 ### Q1: 启动失败，提示端口被占用
 
 ```bash
-lsof -ti:8502 | xargs kill -9
-python3 -m streamlit run app_v2.py --server.port 8502
+lsof -ti:8501 | xargs kill -9
+streamlit run app.py
 ```
 
 ### Q2: KPI 显示为 0

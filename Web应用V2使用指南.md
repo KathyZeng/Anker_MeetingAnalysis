@@ -14,13 +14,13 @@
 
 ```bash
 # 方式1: 使用专用脚本（推荐）
-python3 -m streamlit run app_v2.py --server.port 8502
+python3 -m streamlit run app.py --server.port 8501
 
 # 方式2: 环境变量启动
-STREAMLIT_SERVER_HEADLESS=true python3 -m streamlit run app_v2.py --server.port 8502 --server.headless true --browser.gatherUsageStats false
+STREAMLIT_SERVER_HEADLESS=true python3 -m streamlit run app.py --server.port 8501 --server.headless true --browser.gatherUsageStats false
 
 # 访问地址
-http://localhost:8502
+http://localhost:8501
 ```
 
 ---
@@ -406,7 +406,7 @@ http://localhost:8502
 ### Q: 页面打不开？
 
 **A**: 检查以下几点：
-1. 确认端口8502未被占用
+1. 确认端口8501未被占用
 2. 确认streamlit已正确安装
 3. 查看终端错误信息
 
@@ -445,7 +445,7 @@ http://localhost:8502
 ## 🎉 开始使用
 
 现在您可以：
-1. 访问 http://localhost:8502
+1. 访问 http://localhost:8501
 2. 按照"首次使用"流程开始分析
 3. 体验完整的数据分析功能
 
