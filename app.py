@@ -26,60 +26,235 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 自定义CSS
+# 自定义CSS - 精美UI设计
 st.markdown("""
 <style>
+    /* 全局样式优化 */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    .main {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+
+    /* 标题样式 */
     .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        padding: 1rem 0;
-    }
-    .kpi-card {
-        padding: 1.5rem;
+        font-size: 2.8rem;
+        font-weight: 700;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-align: center;
+        padding: 1.5rem 0;
+        letter-spacing: -0.5px;
+    }
+
+    /* KPI卡片 - 多种渐变配色 */
+    .kpi-card {
+        padding: 2rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
         color: white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        transition: all 0.3s ease;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
     }
+
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+    }
+
+    .kpi-card-green {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        box-shadow: 0 10px 30px rgba(56, 239, 125, 0.3);
+    }
+
+    .kpi-card-green:hover {
+        box-shadow: 0 15px 40px rgba(56, 239, 125, 0.4);
+    }
+
+    .kpi-card-orange {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        box-shadow: 0 10px 30px rgba(245, 87, 108, 0.3);
+    }
+
+    .kpi-card-orange:hover {
+        box-shadow: 0 15px 40px rgba(245, 87, 108, 0.4);
+    }
+
+    .kpi-card-blue {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        box-shadow: 0 10px 30px rgba(79, 172, 254, 0.3);
+    }
+
+    .kpi-card-blue:hover {
+        box-shadow: 0 15px 40px rgba(79, 172, 254, 0.4);
+    }
+
     .kpi-value {
-        font-size: 2.5rem;
-        font-weight: bold;
-        margin: 0.5rem 0;
+        font-size: 3rem;
+        font-weight: 700;
+        margin: 1rem 0;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     }
+
     .kpi-label {
+        font-size: 1.1rem;
+        opacity: 0.95;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .kpi-delta {
         font-size: 1rem;
-        opacity: 0.9;
+        margin-top: 0.5rem;
+        padding: 0.3rem 0.8rem;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        display: inline-block;
     }
+
+    /* 章节标题 */
     .section-header {
-        font-size: 1.5rem;
-        font-weight: bold;
+        font-size: 1.8rem;
+        font-weight: 600;
         color: #2c3e50;
-        padding: 0.5rem 0;
-        border-bottom: 2px solid #3498db;
-        margin-top: 1rem;
+        padding: 1rem 0;
+        border-bottom: 3px solid;
+        border-image: linear-gradient(90deg, #667eea, #764ba2) 1;
+        margin: 2rem 0 1rem 0;
+        position: relative;
     }
+
+    .section-header::before {
+        content: '';
+        position: absolute;
+        bottom: -3px;
+        left: 0;
+        width: 60px;
+        height: 3px;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+    }
+
+    /* 信息框 - 现代设计 */
     .info-box {
-        padding: 1rem;
-        background-color: #d1ecf1;
-        border-left: 4px solid #17a2b8;
-        border-radius: 4px;
-        margin: 1rem 0;
+        padding: 1.2rem 1.5rem;
+        background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
+        border-left: 5px solid #00acc1;
+        border-radius: 12px;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(0, 172, 193, 0.15);
+        transition: all 0.3s ease;
     }
+
+    .info-box:hover {
+        transform: translateX(5px);
+        box-shadow: 0 6px 20px rgba(0, 172, 193, 0.2);
+    }
+
     .warning-box {
-        padding: 1rem;
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
-        border-radius: 4px;
-        margin: 1rem 0;
+        padding: 1.2rem 1.5rem;
+        background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+        border-left: 5px solid #ffa726;
+        border-radius: 12px;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(255, 167, 38, 0.15);
+        transition: all 0.3s ease;
     }
+
+    .warning-box:hover {
+        transform: translateX(5px);
+        box-shadow: 0 6px 20px rgba(255, 167, 38, 0.2);
+    }
+
     .success-box {
-        padding: 1rem;
-        background-color: #d4edda;
-        border-left: 4px solid #28a745;
-        border-radius: 4px;
+        padding: 1.2rem 1.5rem;
+        background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+        border-left: 5px solid #66bb6a;
+        border-radius: 12px;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(102, 187, 106, 0.15);
+        transition: all 0.3s ease;
+    }
+
+    .success-box:hover {
+        transform: translateX(5px);
+        box-shadow: 0 6px 20px rgba(102, 187, 106, 0.2);
+    }
+
+    /* 表格样式优化 */
+    .stDataFrame {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    /* 按钮样式 */
+    .stButton>button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.6rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    /* 侧边栏优化 */
+    .css-1d391kg {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+
+    /* 指标卡片容器 */
+    .metric-container {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
         margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+
+    .metric-container:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    /* 图表容器 */
+    .chart-container {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 25px rgba(0, 0, 0, 0.08);
+        margin: 1.5rem 0;
+    }
+
+    /* 加载动画优化 */
+    .stSpinner > div {
+        border-top-color: #667eea !important;
+    }
+
+    /* 隐藏Streamlit品牌 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        .kpi-value {
+            font-size: 2rem;
+        }
+        .main-header {
+            font-size: 2rem;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,6 +270,67 @@ DATA_CONFIG_FILE = os.path.join(CONFIG_DIR, "data_config.json")
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# ==================== 图表主题配置 ====================
+
+def get_chart_theme():
+    """返回统一的图表主题配置"""
+    return {
+        'template': 'plotly_white',
+        'paper_bgcolor': 'rgba(255,255,255,1)',
+        'plot_bgcolor': 'rgba(248,249,250,1)',
+        'font': {
+            'family': 'Inter, sans-serif',
+            'size': 12,
+            'color': '#2c3e50'
+        },
+        'title': {
+            'font': {
+                'size': 20,
+                'color': '#2c3e50',
+                'family': 'Inter, sans-serif'
+            },
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        'xaxis': {
+            'showgrid': True,
+            'gridcolor': 'rgba(0,0,0,0.05)',
+            'showline': True,
+            'linecolor': 'rgba(0,0,0,0.1)',
+            'zeroline': False
+        },
+        'yaxis': {
+            'showgrid': True,
+            'gridcolor': 'rgba(0,0,0,0.05)',
+            'showline': False,
+            'zeroline': False
+        },
+        'colorway': ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a']
+    }
+
+def apply_chart_theme(fig):
+    """应用统一的图表主题"""
+    theme = get_chart_theme()
+    fig.update_layout(
+        template=theme['template'],
+        paper_bgcolor=theme['paper_bgcolor'],
+        plot_bgcolor=theme['plot_bgcolor'],
+        font=theme['font'],
+        title_font=theme['title']['font'],
+        title_x=theme['title']['x'],
+        title_xanchor=theme['title']['xanchor'],
+        xaxis=theme['xaxis'],
+        yaxis=theme['yaxis'],
+        showlegend=True,
+        legend=dict(
+            bgcolor='rgba(255,255,255,0.8)',
+            bordercolor='rgba(0,0,0,0.1)',
+            borderwidth=1
+        ),
+        margin=dict(l=50, r=50, t=80, b=50)
+    )
+    return fig
 
 
 # ==================== 配置管理函数 ====================
@@ -602,13 +838,13 @@ elif page == "📊 概览":
             current_meetings = current_kpis.get('日人均线上会议数-即时+日程', 0)
             change = ((current_meetings - baseline_meetings) / baseline_meetings * 100) if baseline_meetings > 0 else 0
 
+            delta_symbol = "📈" if change > 0 else "📉" if change < 0 else "➖"
             st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-label">日人均会议数</div>
+            <div class="kpi-card kpi-card-blue">
+                <div class="kpi-label">📊 日人均会议数</div>
                 <div class="kpi-value">{current_meetings:.2f}</div>
-                <div class="kpi-label">
-                    基线期: {baseline_meetings:.2f} |
-                    变化: {change:+.1f}%
+                <div class="kpi-delta">
+                    基线: {baseline_meetings:.2f} | {delta_symbol} {change:+.1f}%
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -634,13 +870,13 @@ elif page == "📊 概览":
             current_duration = current_kpis.get('日人均线上会议时长(分钟)-即时+日程', 0)
             change = ((current_duration - baseline_duration) / baseline_duration * 100) if baseline_duration > 0 else 0
 
+            delta_symbol = "📈" if change > 0 else "📉" if change < 0 else "➖"
             st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-label">日人均会议时长（分钟）</div>
-                <div class="kpi-value">{current_duration:.1f}</div>
-                <div class="kpi-label">
-                    基线期: {baseline_duration:.1f} |
-                    变化: {change:+.1f}%
+            <div class="kpi-card kpi-card-green">
+                <div class="kpi-label">⏱️ 日人均会议时长</div>
+                <div class="kpi-value">{current_duration:.1f}<span style="font-size:1.5rem">分钟</span></div>
+                <div class="kpi-delta">
+                    基线: {baseline_duration:.1f} | {delta_symbol} {change:+.1f}%
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -671,13 +907,13 @@ elif page == "📊 概览":
             current_ratio = (current_instant / current_total * 100) if current_total > 0 else 0
             change = current_ratio - baseline_ratio
 
+            delta_symbol = "📈" if change > 0 else "📉" if change < 0 else "➖"
             st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-label">即时会议占比</div>
+            <div class="kpi-card kpi-card-orange">
+                <div class="kpi-label">⚡ 即时会议占比</div>
                 <div class="kpi-value">{current_ratio:.1f}%</div>
-                <div class="kpi-label">
-                    基线期: {baseline_ratio:.1f}% |
-                    变化: {change:+.1f}pp
+                <div class="kpi-delta">
+                    基线: {baseline_ratio:.1f}% | {delta_symbol} {change:+.1f}pp
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -723,18 +959,24 @@ elif page == "📊 概览":
             y=period_stats['日人均线上会议数-即时+日程'],
             mode='lines+markers',
             name='日人均会议数',
-            line=dict(color='#667eea', width=3)
+            line=dict(color='#667eea', width=4, shape='spline'),
+            marker=dict(size=10, symbol='circle', line=dict(width=2, color='white')),
+            fill='tonexty',
+            fillcolor='rgba(102, 126, 234, 0.1)'
         ))
 
         fig.update_layout(
-            title="会议数趋势",
+            title="📈 会议数趋势分析",
             xaxis_title="周期",
             yaxis_title="日人均会议数",
-            height=400,
+            height=450,
             hovermode='x unified'
         )
+        fig = apply_chart_theme(fig)
 
-        st.plotly_chart(fig, width='stretch')
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # 会议类型分布
         st.markdown("---")
@@ -752,9 +994,17 @@ elif page == "📊 概览":
             fig = px.pie(
                 values=list(baseline_types.values()),
                 names=list(baseline_types.keys()),
-                title="基线期会议类型分布"
+                title="📊 基线期会议类型分布",
+                hole=0.4,
+                color_discrete_sequence=['#667eea', '#43e97b', '#fa709a']
             )
-            st.plotly_chart(fig, width='stretch')
+            fig.update_traces(
+                textposition='inside',
+                textinfo='percent+label',
+                hovertemplate='<b>%{label}</b><br>数量: %{value}<br>占比: %{percent}<extra></extra>'
+            )
+            fig = apply_chart_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
 
         with col2:
             current_types = {
@@ -766,9 +1016,17 @@ elif page == "📊 概览":
             fig = px.pie(
                 values=list(current_types.values()),
                 names=list(current_types.keys()),
-                title="当前期会议类型分布"
+                title="📊 当前期会议类型分布",
+                hole=0.4,
+                color_discrete_sequence=['#667eea', '#43e97b', '#fa709a']
             )
-            st.plotly_chart(fig, width='stretch')
+            fig.update_traces(
+                textposition='inside',
+                textinfo='percent+label',
+                hovertemplate='<b>%{label}</b><br>数量: %{value}<br>占比: %{percent}<extra></extra>'
+            )
+            fig = apply_chart_theme(fig)
+            st.plotly_chart(fig, use_container_width=True)
 
 
 # ==================== 页面3: 原始数据 ====================
